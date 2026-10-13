@@ -2,333 +2,139 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowRight,
-  Calendar,
-  CheckSquare,
-  Square,
+  Save,
   FileText,
   Building2,
   User as UserIcon,
   AlertCircle,
-  Save,
+  Sparkles,
+  Calendar,
 } from 'lucide-react';
-import { useAuthStore } from '../../stores/auth-store';
-import { useEntityStore } from '../../stores/entity-store';
 import { useAggregatesStore } from '../../stores/aggregates-store';
-import type { AvailableReport } from '../../stores/aggregates-store';
-import { supabase } from '../../lib/supabase';
-import { Button, Card } from '../../components/ui';
-import { Loading } from '../../components/ui/Loading';
+import { Button, Card, Loading } from '../../components/ui';
+import { VisitsTable } from '../../components/aggregates/VisitsTable';
+import { ManualActivitiesTable } from '../../components/aggregates/ManualActivitiesTable';
+import type {
+  SpecialistReportData,
+  VisitRow,
+  ManualActivityRow,
+} from '../../types/aggregates';
 
-// ================================================
-// Helpers
-// ================================================
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('ar-EG', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  } catch {
-    return '—';
-  }
-}
-
-function getToday(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
-function getWeekAgo(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 7);
-  return d.toISOString().split('T')[0];
-}
-
-// ================================================
-// Calculations
-// ================================================
-
-interface Calculations {
-  count: number;
-  avg_rating: number | null;
-  distribution: Record<string, number>;
-  notes: string[];
-  recommendations: string[];
-}
-
-function calculateStats(reports: AvailableReport[]): Calculations {
-  const ratings: number[] = [];
-  const distribution: Record<string, number> = {};
-  const notesSet = new Set<string>();
-  const recsSet = new Set<string>();
-
-  reports.forEach((report) => {
-    const rating = report.data?.rating;
-    if (typeof rating === 'number') {
-      ratings.push(rating);
-      const key = String(rating);
-      distribution[key] = (distribution[key] || 0) + 1;
-    }
-
-    const notes = report.data?.notes;
-    if (typeof notes === 'string' && notes.trim()) {
-      notesSet.add(notes.trim());
-    }
-
-    const recs = report.data?.recommendations;
-    if (typeof recs === 'string' && recs.trim()) {
-      recsSet.add(recs.trim());
-    }
-  });
-
-  const avg =
-    ratings.length > 0
-      ? ratings.reduce((a, b) => a + b, 0) / ratings.length
-      : null;
-
-  return {
-    count: reports.length,
-    avg_rating: avg,
-    distribution,
-    notes: Array.from(notesSet),
-    recommendations: Array.from(recsSet),
-  };
-}
-
-// ================================================
-// Component
-// ================================================
+// ═══════════════════════════════════════════════════════════
+// EditAggregatePage — تعديل تقرير تجميعي محفوظ
+// ═══════════════════════════════════════════════════════════
 
 export function EditAggregatePage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuthStore();
-  const { activeEntity } = useEntityStore();
+
   const {
     currentAggregate,
-    availableReports,
-    loading,
+    loadingDetail,
     saving,
-    loadingReports,
     error,
     loadAggregateById,
-    loadAvailableReports,
     updateAggregate,
-    clearAvailableReports,
+    clearError,
     clearCurrentAggregate,
   } = useAggregatesStore();
 
-  const [periodType, setPeriodType] = useState<
-    'weekly' | 'biweekly' | 'monthly' | 'custom'
-  >('weekly');
-  const [periodStart, setPeriodStart] = useState(getWeekAgo());
-  const [periodEnd, setPeriodEnd] = useState(getToday());
-  const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(
-    new Set()
-  );
-  const [initialized, setInitialized] = useState(false);
+  // State محلي
+  const [visits, setVisits] = useState<VisitRow[]>([]);
+  const [manualActivities, setManualActivities] = useState<
+    ManualActivityRow[]
+  >([]);
+  const [loaded, setLoaded] = useState(false);
 
-  // Load Aggregate
+  // ═══════════════════════════════════════════
+  // Load
+  // ═══════════════════════════════════════════
+
   useEffect(() => {
     if (id) {
       loadAggregateById(id);
     }
-
     return () => {
+      clearError();
       clearCurrentAggregate();
-      clearAvailableReports();
     };
-  }, [id, loadAggregateById, clearCurrentAggregate, clearAvailableReports]);
+  }, [id, loadAggregateById, clearError, clearCurrentAggregate]);
 
-  // Initialize Form Data
+  // ⭐ Populate local state
   useEffect(() => {
-    if (currentAggregate && !initialized) {
-      setPeriodType(
-        (currentAggregate.period_type as
-          | 'weekly'
-          | 'biweekly'
-          | 'monthly'
-          | 'custom') || 'weekly'
-      );
-      setPeriodStart(currentAggregate.period_start || getWeekAgo());
-      setPeriodEnd(currentAggregate.period_end || getToday());
-      setInitialized(true);
+    if (currentAggregate && !loaded) {
+      const reportData = currentAggregate.data as SpecialistReportData;
+
+      setVisits(reportData?.visits || []);
+      setManualActivities(reportData?.manual_activities || []);
+      setLoaded(true);
     }
-  }, [currentAggregate, initialized]);
+  }, [currentAggregate, loaded]);
 
-  // Load Sources (from aggregate_template)
-  useEffect(() => {
-    if (
-      currentAggregate &&
-      user &&
-      activeEntity &&
-      initialized &&
-      currentAggregate.aggregate_template_id
-    ) {
-      const loadSources = async () => {
-        const { data: templateData } = await supabase
-          .from('aggregate_templates')
-          .select('source_template_ids')
-          .eq('id', currentAggregate.aggregate_template_id || '')
-          .single();
-
-        if (templateData?.source_template_ids) {
-          await loadAvailableReports({
-            sourceTemplateIds: templateData.source_template_ids,
-            periodStart,
-            periodEnd,
-            userId: user.id,
-            entityId: activeEntity.entityId,
-            scope: 'all',
-          });
-        }
-      };
-
-      loadSources();
-    }
-  }, [
-    currentAggregate,
-    user,
-    activeEntity,
-    initialized,
-    periodStart,
-    periodEnd,
-    loadAvailableReports,
-  ]);
-
-  // Load Current Sources
-  useEffect(() => {
-    if (id && initialized) {
-      const loadCurrentSources = async () => {
-        const { data } = await supabase
-          .from('aggregate_report_sources')
-          .select('report_id')
-          .eq('aggregate_report_id', id);
-
-        if (data) {
-          setSelectedReportIds(new Set(data.map((s) => s.report_id)));
-        }
-      };
-
-      loadCurrentSources();
-    }
-  }, [id, initialized]);
-
+  // ═══════════════════════════════════════════
   // Handlers
-  const handleToggleReport = (reportId: string) => {
-    setSelectedReportIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(reportId)) {
-        next.delete(reportId);
-      } else {
-        next.add(reportId);
-      }
-      return next;
-    });
-  };
+  // ═══════════════════════════════════════════
 
-  const handleSelectAll = () => {
-    if (selectedReportIds.size === availableReports.length) {
-      setSelectedReportIds(new Set());
-    } else {
-      setSelectedReportIds(new Set(availableReports.map((r) => r.id)));
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!currentAggregate || !id) return;
-
-    if (selectedReportIds.size === 0) {
-      alert('الرجاء اختيار تقرير واحد على الأقل');
-      return;
-    }
-
-    if (!periodStart || !periodEnd) {
-      alert('الرجاء تحديد الفترة الزمنية');
-      return;
-    }
-
-    const selectedReports = availableReports.filter((r) =>
-      selectedReportIds.has(r.id)
-    );
-
-    const stats = calculateStats(selectedReports);
-
-    const chartData = Object.entries(stats.distribution)
-      .map(([rating, count]) => ({
-        rating: Number(rating),
-        count,
-      }))
-      .sort((a, b) => a.rating - b.rating);
+  const handleSave = async () => {
+    if (!id) return;
 
     try {
-      await updateAggregate(id, {
-        periodType,
-        periodStart,
-        periodEnd,
-        sourceReportIds: Array.from(selectedReportIds),
-        calculations: {
-          count: stats.count,
-          avg_rating: stats.avg_rating,
-          distribution: stats.distribution,
-          notes: stats.notes,
-          recommendations: stats.recommendations,
-        },
-        summary: {
-          count: stats.count,
-          avg_rating: stats.avg_rating,
-          total_sources: selectedReportIds.size,
-          notes_count: stats.notes.length,
-          recommendations_count: stats.recommendations.length,
-        },
-        charts: {
-          rating_distribution: chartData,
-        },
+      await updateAggregate({
+        aggregateId: id,
+        manualActivities,
       });
 
-      navigate(`/aggregates/${id}`, { replace: true });
+      navigate(`/aggregates/${id}`);
     } catch (err) {
-      console.error('Submit error:', err);
+      console.error('Save failed:', err);
     }
   };
 
-  const handleCancel = () => {
-    navigate(`/aggregates/${id}`);
-  };
-
+  // ═══════════════════════════════════════════
   // Render — Loading
-  if (loading || !initialized) {
+  // ═══════════════════════════════════════════
+
+  if (loadingDetail || !loaded) {
     return <Loading message="جاري تحميل التقرير..." />;
   }
 
-  // Render — Error
-  if (error || !currentAggregate) {
+  if (error) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/aggregates')}
-            className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
-          >
-            <ArrowRight className="w-5 h-5 text-text-secondary" />
-          </button>
-          <h1 className="text-2xl font-bold text-text">تعديل التقرير</h1>
-        </div>
-
+      <div className="space-y-6" dir="rtl">
         <Card padding="lg" className="border-danger bg-danger/5">
-          <div className="text-center py-8">
-            <div className="text-6xl mb-4">⚠️</div>
-            <h2 className="text-xl font-bold text-danger mb-2">
-              لم يتم العثور على التقرير
+          <div className="flex items-start gap-3 text-danger">
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+            <div className="flex-1">
+              <h2 className="mb-1 font-bold">خطأ</h2>
+              <p className="text-sm">{error}</p>
+            </div>
+          </div>
+        </Card>
+        <Button
+          variant="ghost"
+          icon={<ArrowRight className="h-4 w-4" />}
+          onClick={() => navigate('/aggregates')}
+        >
+          عودة للتقارير
+        </Button>
+      </div>
+    );
+  }
+
+  if (!currentAggregate) {
+    return (
+      <div className="space-y-6" dir="rtl">
+        <Card padding="lg">
+          <div className="py-12 text-center">
+            <div className="mb-4 text-6xl">📄</div>
+            <h2 className="mb-2 text-xl font-bold text-text">
+              التقرير غير موجود
             </h2>
-            <p className="text-text-secondary mb-6">
-              {error || 'التقرير غير موجود'}
+            <p className="mb-6 text-text-secondary">
+              قد يكون التقرير محذوفاً أو غير متاح
             </p>
             <Button variant="primary" onClick={() => navigate('/aggregates')}>
-              العودة إلى التجميعية
+              عودة للتقارير
             </Button>
           </div>
         </Card>
@@ -336,248 +142,195 @@ export function EditAggregatePage() {
     );
   }
 
-  const allSelected =
-    selectedReportIds.size === availableReports.length &&
-    availableReports.length > 0;
+  // ═══════════════════════════════════════════
+  // Data
+  // ═══════════════════════════════════════════
+
+  const reportData = currentAggregate.data as SpecialistReportData;
+  const calcs = currentAggregate.aggregate_template?.calculations;
+  const reportType = calcs?.report_type || reportData?.report_type || 'RL';
+  const entityLabel = calcs?.entity_label || 'الجهة';
+
+  const specialistName = reportData?.specialist_name || '—';
+  const regionName = reportData?.region_name || '—';
+  const periodStart =
+    reportData?.period_start || currentAggregate.period_start || '—';
+  const periodEnd =
+    reportData?.period_end || currentAggregate.period_end || '—';
+  const periodType =
+    reportData?.period_type || currentAggregate.period_type || '—';
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr || dateStr === '—') return '—';
+    try {
+      return new Date(dateStr).toLocaleDateString('ar-EG', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const periodTypeLabel = (() => {
+    if (periodType === 'biweekly') return 'نصف شهري';
+    if (periodType === 'monthly') return 'شهري';
+    if (periodType === 'custom') return 'مخصص';
+    return '—';
+  })();
+
+  // ═══════════════════════════════════════════
+  // Render
+  // ═══════════════════════════════════════════
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
+    <div className="space-y-6" dir="rtl">
+      {/* ═══ Header ═══ */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={handleCancel}
-            className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
+            onClick={() => navigate(`/aggregates/${id}`)}
+            className="rounded-lg p-2 transition-colors hover:bg-bg-secondary"
           >
-            <ArrowRight className="w-5 h-5 text-text-secondary" />
+            <ArrowRight className="h-5 w-5 text-text-secondary" />
           </button>
           <div>
             <h1 className="text-2xl font-bold text-text">
               ✏️ تعديل التقرير التجميعي
             </h1>
-            <p className="text-text-secondary text-sm mt-1">
-              {currentAggregate.aggregate_template?.name_ar || 'تقرير'}
+            <p className="mt-1 text-sm text-text-secondary">
+              {currentAggregate.aggregate_template?.name_ar || 'تقرير تجميعي'}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={handleCancel}>
+          <Button
+            variant="ghost"
+            onClick={() => navigate(`/aggregates/${id}`)}
+          >
             إلغاء
           </Button>
           <Button
             variant="primary"
-            icon={<Save className="w-4 h-4" />}
-            onClick={handleSubmit}
-            disabled={saving || selectedReportIds.size === 0}
+            icon={<Save className="h-4 w-4" />}
+            onClick={handleSave}
+            disabled={saving}
             loading={saving}
           >
-            💾 حفظ التعديلات
+            حفظ التعديلات
           </Button>
         </div>
       </div>
 
-      {/* Error */}
+      {/* ═══ Info Banner ═══ */}
+      <Card padding="md" className="border-info/30 bg-info/5">
+        <div className="flex items-start gap-2 text-sm text-info">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <span>
+            يمكنك تعديل الأنشطة الإشرافية فقط. الزيارات مرتبطة بتقارير
+            المنشأ ولا يمكن تعديلها من هنا.
+          </span>
+        </div>
+      </Card>
+
+      {/* ═══ Error ═══ */}
       {error && (
         <Card padding="md" className="border-danger bg-danger/5">
-          <div className="text-danger text-sm flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 mt-0.5" />
+          <div className="flex items-start gap-2 text-sm text-danger">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <span>{error}</span>
           </div>
         </Card>
       )}
 
-      {/* Period */}
-      <Card padding="lg">
-        <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-primary" />
-          📅 فترة التقرير
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-text mb-2">
-              نوع الفترة
-            </label>
-            <select
-              value={periodType}
-              onChange={(e) =>
-                setPeriodType(
-                  e.target.value as
-                    | 'weekly'
-                    | 'biweekly'
-                    | 'monthly'
-                    | 'custom'
-                )
-              }
-              className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="weekly">أسبوعي</option>
-              <option value="biweekly">كل أسبوعين</option>
-              <option value="monthly">شهري</option>
-              <option value="custom">مخصص</option>
-            </select>
+      {/* ═══ Metadata (قراءة فقط) ═══ */}
+      <Card padding="lg" className="bg-bg-secondary">
+        <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
+          <div className="flex items-center gap-2">
+            <UserIcon className="h-4 w-4 text-text-muted" />
+            <span className="text-text-secondary">المختص:</span>
+            <span className="font-medium text-text">{specialistName}</span>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text mb-2">
-              من تاريخ
-            </label>
-            <input
-              type="date"
-              value={periodStart}
-              onChange={(e) => setPeriodStart(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-text-muted" />
+            <span className="text-text-secondary">المنطقة:</span>
+            <span className="font-medium text-text">{regionName}</span>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text mb-2">
-              إلى تاريخ
-            </label>
-            <input
-              type="date"
-              value={periodEnd}
-              onChange={(e) => setPeriodEnd(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* Sources */}
-      <Card padding="lg">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-text flex items-center gap-2">
-            <FileText className="w-5 h-5 text-info" />
-            📄 التقارير المصدر
-            <span className="text-sm font-normal text-text-muted">
-              ({selectedReportIds.size} / {availableReports.length})
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-text-muted" />
+            <span className="text-text-secondary">
+              الفترة ({periodTypeLabel}):
             </span>
-          </h3>
-
-          {availableReports.length > 0 && (
-            <button
-              onClick={handleSelectAll}
-              className="flex items-center gap-2 text-sm text-primary hover:text-primary-dark transition-colors"
-            >
-              {allSelected ? (
-                <CheckSquare className="w-4 h-4" />
-              ) : (
-                <Square className="w-4 h-4" />
-              )}
-              {allSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
-            </button>
-          )}
+            <span className="font-medium text-text">
+              {formatDate(periodStart)} → {formatDate(periodEnd)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-text-muted" />
+            <span className="text-text-secondary">النوع:</span>
+            <span className="font-medium text-text">
+              {reportType === 'RL' ? 'زيارات R.L' : 'زيارات TLS'}
+            </span>
+          </div>
         </div>
-
-        {loadingReports ? (
-          <div className="text-center py-8">
-            <Loading message="جاري تحميل التقارير..." />
-          </div>
-        ) : availableReports.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-bg-secondary rounded-full mb-4">
-              <FileText className="w-8 h-8 text-text-muted" />
-            </div>
-            <h4 className="text-lg font-semibold text-text mb-2">
-              لا توجد تقارير متاحة
-            </h4>
-            <p className="text-text-secondary text-sm">
-              لم يتم العثور على تقارير في هذه الفترة
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {availableReports.map((report) => {
-              const isSelected = selectedReportIds.has(report.id);
-              return (
-                <button
-                  key={report.id}
-                  onClick={() => handleToggleReport(report.id)}
-                  className={`
-                    w-full text-right flex items-start gap-3 p-3 rounded-lg border transition-all
-                    ${
-                      isSelected
-                        ? 'bg-primary/5 border-primary/30'
-                        : 'bg-surface border-border hover:bg-bg-secondary'
-                    }
-                  `}
-                >
-                  <div className="flex-shrink-0 mt-0.5">
-                    {isSelected ? (
-                      <CheckSquare className="w-5 h-5 text-primary" />
-                    ) : (
-                      <Square className="w-5 h-5 text-text-muted" />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-text truncate">
-                        {report.template?.name_ar || 'تقرير'}
-                      </span>
-                      {report.template?.category && (
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-md font-medium"
-                          style={{
-                            backgroundColor: `${report.template.category.color}15`,
-                            color:
-                              report.template.category.color || '#2563eb',
-                          }}
-                        >
-                          {report.template.category.name_ar}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Building2 className="w-3 h-3" />
-                        {report.entity?.name_ar || '—'}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <UserIcon className="w-3 h-3" />
-                        {report.creator?.full_name || '—'}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {formatDate(report.period_start)} →{' '}
-                        {formatDate(report.period_end)}
-                      </span>
-                    </div>
-
-                    {typeof report.data?.rating === 'number' && (
-                      <div className="mt-1 text-xs">
-                        <span className="text-warning">
-                          ⭐ {report.data.rating as number} / 5
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
       </Card>
 
-      {/* Bottom Actions */}
+      {/* ═══ Visits Table (قراءة فقط) ═══ */}
+      <Card padding="lg">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-semibold text-text">
+            <FileText className="h-5 w-5 text-info" />
+            أولاً: الزيارات
+          </h3>
+          <span className="rounded-full bg-bg-secondary px-3 py-1 text-xs text-text-muted">
+            للعرض فقط
+          </span>
+        </div>
+
+        <VisitsTable visits={visits} entityLabel={entityLabel} />
+      </Card>
+
+      {/* ═══ Manual Activities (قابل للتعديل) ═══ */}
+      <Card padding="lg">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-semibold text-text">
+            <Sparkles className="h-5 w-5 text-warning" />
+            ثانياً: أنشطة إشرافية أخرى
+          </h3>
+          <span className="rounded-full bg-warning/10 px-3 py-1 text-xs text-warning">
+            قابل للتعديل
+          </span>
+        </div>
+
+        <ManualActivitiesTable
+          activities={manualActivities}
+          onChange={setManualActivities}
+        />
+      </Card>
+
+      {/* ═══ Bottom Actions ═══ */}
       <div className="flex items-center justify-end gap-3 pt-2">
-        <Button variant="ghost" onClick={handleCancel}>
+        <Button
+          variant="ghost"
+          onClick={() => navigate(`/aggregates/${id}`)}
+        >
           إلغاء
         </Button>
         <Button
           variant="primary"
           size="lg"
-          icon={<Save className="w-5 h-5" />}
-          onClick={handleSubmit}
-          disabled={saving || selectedReportIds.size === 0}
+          icon={<Save className="h-5 w-5" />}
+          onClick={handleSave}
+          disabled={saving}
           loading={saving}
         >
-          💾 حفظ التعديلات
+          حفظ التعديلات
         </Button>
       </div>
     </div>
   );
 }
+
+export default EditAggregatePage;

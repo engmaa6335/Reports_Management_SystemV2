@@ -11,7 +11,7 @@ import { ReportsListPage } from './pages/reports/ReportsListPage';
 import { CreateReportPage } from './pages/reports/CreateReportPage';
 import { ViewReportPage } from './pages/reports/ViewReportPage';
 import { EditReportPage } from './pages/reports/EditReportPage';
-import { AggregatesListPage } from './pages/aggregates/AggregatesListPage';
+import AggregatesListPage from './pages/aggregates/AggregatesListPage';
 import { CreateAggregatePage } from './pages/aggregates/CreateAggregatePage';
 import { ViewAggregatePage } from './pages/aggregates/ViewAggregatePage';
 import { EditAggregatePage } from './pages/aggregates/EditAggregatePage';

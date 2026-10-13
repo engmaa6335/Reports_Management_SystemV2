@@ -1,145 +1,117 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowRight,
-  BarChart3,
-  Calendar,
-  Clock,
-  User as UserIcon,
-  FileText,
-  TrendingUp,
-  Star,
-  Trash2,
+  Printer,
   Edit,
+  User as UserIcon,
+  Building2,
+  Calendar,
+  FileText,
+  Sparkles,
+  AlertCircle,
 } from 'lucide-react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts';
 import { useAggregatesStore } from '../../stores/aggregates-store';
-import { useAuthStore } from '../../stores/auth-store';
-import { useEntityStore } from '../../stores/entity-store';
-import { Button, Card } from '../../components/ui';
-import { Loading } from '../../components/ui/Loading';
-import { DeleteAggregateModal } from '../../components/aggregates/DeleteAggregateModal';
+import { Button, Card, Loading } from '../../components/ui';
+import { VisitsTable } from '../../components/aggregates/VisitsTable';
+import type {
+  SpecialistReportData,
+  VisitRow,
+  ManualActivityRow,
+} from '../../types/aggregates';
 
-// ================================================
-// Helpers
-// ================================================
+// ═══════════════════════════════════════════════════════════
+// ViewAggregatePage — عرض وطباعة التقرير التجميعي
+// ═══════════════════════════════════════════════════════════
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('ar-EG', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  } catch {
-    return '—';
-  }
-}
-
-function getPeriodLabel(periodType: string | null): string {
-  const labels: Record<string, string> = {
-    weekly: 'أسبوعي',
-    biweekly: 'كل أسبوعين',
-    monthly: 'شهري',
-    custom: 'مخصص',
-  };
-  return periodType ? labels[periodType] || periodType : '—';
-}
-
-// ================================================
-// Component
-// ================================================
+// ⭐ نمط كسر النص الطويل (لكل خلايا الجداول)
+const breakableCellStyle: React.CSSProperties = {
+  wordBreak: 'break-word',
+  overflowWrap: 'anywhere',
+  whiteSpace: 'pre-wrap',
+  maxWidth: '100%',
+};
 
 export function ViewAggregatePage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuthStore();
-  const { activeEntity } = useEntityStore();
+  const printRef = useRef<HTMLDivElement>(null);
+
   const {
     currentAggregate,
-    loading,
-    saving,
+    loadingDetail,
     error,
     loadAggregateById,
-    deleteAggregate,
-    clearCurrentAggregate,
+    clearError,
   } = useAggregatesStore();
 
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  // ═══════════════════════════════════════════
+  // Load
+  // ═══════════════════════════════════════════
 
   useEffect(() => {
     if (id) {
       loadAggregateById(id);
     }
+    return () => clearError();
+  }, [id, loadAggregateById, clearError]);
 
-    return () => {
-      clearCurrentAggregate();
-    };
-  }, [id, loadAggregateById, clearCurrentAggregate]);
+  // ═══════════════════════════════════════════
+  // Print
+  // ═══════════════════════════════════════════
 
-  // Permissions
-  const isTechSupport = activeEntity?.roleCode === 'tech_support';
-  const isOwner = currentAggregate?.created_by === user?.id;
-  const canEdit = isOwner || isTechSupport;
-  const canDelete = isTechSupport;
-
-  const handleDelete = async (reason: string) => {
-    if (!id) return;
-
-    try {
-      await deleteAggregate(id, reason);
-      setShowDeleteModal(false);
-      navigate('/aggregates', { replace: true });
-    } catch (err) {
-      console.error('Delete error:', err);
-    }
+  const handlePrint = () => {
+    window.print();
   };
 
+  // ═══════════════════════════════════════════
   // Render — Loading
-  if (loading) {
-    return <Loading message="جاري تحميل التقرير التجميعي..." />;
+  // ═══════════════════════════════════════════
+
+  if (loadingDetail) {
+    return <Loading message="جاري تحميل التقرير..." />;
   }
 
-  // Render — Error
-  if (error || !currentAggregate) {
+  if (error) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/aggregates')}
-            className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
-          >
-            <ArrowRight className="w-5 h-5 text-text-secondary" />
-          </button>
-          <h1 className="text-2xl font-bold text-text">التقرير التجميعي</h1>
-        </div>
-
+      <div className="space-y-6" dir="rtl">
         <Card padding="lg" className="border-danger bg-danger/5">
-          <div className="text-center py-8">
-            <div className="text-6xl mb-4">⚠️</div>
-            <h2 className="text-xl font-bold text-danger mb-2">
-              لم يتم العثور على التقرير
+          <div className="flex items-start gap-3 text-danger">
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+            <div className="flex-1">
+              <h2 className="mb-1 font-bold">خطأ في تحميل التقرير</h2>
+              <p className="text-sm">{error}</p>
+            </div>
+          </div>
+        </Card>
+        <Button
+          variant="ghost"
+          icon={<ArrowRight className="h-4 w-4" />}
+          onClick={() => navigate('/aggregates')}
+        >
+          عودة للتقارير
+        </Button>
+      </div>
+    );
+  }
+
+  if (!currentAggregate) {
+    return (
+      <div className="space-y-6" dir="rtl">
+        <Card padding="lg">
+          <div className="py-12 text-center">
+            <div className="mb-4 text-6xl">📄</div>
+            <h2 className="mb-2 text-xl font-bold text-text">
+              التقرير غير موجود
             </h2>
-            <p className="text-text-secondary mb-6">
-              {error || 'التقرير التجميعي غير موجود'}
+            <p className="mb-6 text-text-secondary">
+              قد يكون التقرير محذوفاً أو غير متاح
             </p>
             <Button
               variant="primary"
-              icon={<ArrowRight className="w-4 h-4" />}
               onClick={() => navigate('/aggregates')}
             >
-              العودة إلى التجميعية
+              عودة للتقارير
             </Button>
           </div>
         </Card>
@@ -147,344 +119,316 @@ export function ViewAggregatePage() {
     );
   }
 
-  const aggregate = currentAggregate;
-  const data = aggregate.data || {};
-  const charts = aggregate.charts || {};
-  const template = aggregate.aggregate_template;
+  // ═══════════════════════════════════════════
+  // Data
+  // ═══════════════════════════════════════════
 
-  const ratingDistribution =
-    (
-      charts as {
-        rating_distribution?: { rating: number; count: number }[];
-      }
-    ).rating_distribution || [];
+  const reportData = currentAggregate.data as SpecialistReportData;
+  const calcs = currentAggregate.aggregate_template?.calculations;
+  const reportType = calcs?.report_type || reportData?.report_type || 'RL';
+  const entityLabel = calcs?.entity_label || 'الجهة';
 
-  const totalCount = (data.count as number) || 0;
-  const avgRating = (data.avg_rating as number) || 0;
-  const notes = (data.notes as string[]) || [];
-  const recommendations = (data.recommendations as string[]) || [];
+  const visits: VisitRow[] = reportData?.visits || [];
+  const manualActivities: ManualActivityRow[] =
+    reportData?.manual_activities || [];
 
-  const COLORS = ['#ef4444', '#f59e0b', '#eab308', '#84cc16', '#22c55e'];
+  const specialistName = reportData?.specialist_name || '—';
+  const specialization = reportData?.specialization || '—';
+  const regionName = reportData?.region_name || '—';
+  const periodStart =
+    reportData?.period_start || currentAggregate.period_start || '—';
+  const periodEnd =
+    reportData?.period_end || currentAggregate.period_end || '—';
+  const periodType =
+    reportData?.period_type || currentAggregate.period_type || '—';
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr || dateStr === '—') return '—';
+    try {
+      return new Date(dateStr).toLocaleDateString('ar-EG', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const periodTypeLabel = (() => {
+    if (periodType === 'biweekly') return 'نصف شهري';
+    if (periodType === 'monthly') return 'شهري';
+    if (periodType === 'custom') return 'مخصص';
+    return '—';
+  })();
+
+  // ═══════════════════════════════════════════
+  // Render
+  // ═══════════════════════════════════════════
 
   return (
-    <>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/aggregates')}
-              className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
-            >
-              <ArrowRight className="w-5 h-5 text-text-secondary" />
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold text-text">
-                {template?.name_ar || 'تقرير تجميعي'}
-              </h1>
-              <p className="text-text-secondary text-sm mt-1">
-                {formatDate(aggregate.period_start)} →{' '}
-                {formatDate(aggregate.period_end)}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {canEdit && (
-              <Button
-                variant="primary"
-                icon={<Edit className="w-4 h-4" />}
-                onClick={() => navigate(`/aggregates/${id}/edit`)}
-              >
-                تعديل
-              </Button>
-            )}
-            {canDelete && (
-              <Button
-                variant="danger"
-                icon={<Trash2 className="w-4 h-4" />}
-                onClick={() => setShowDeleteModal(true)}
-              >
-                حذف نهائي
-              </Button>
-            )}
+    <div className="space-y-6" dir="rtl">
+      {/* ═══ Action Bar (لا يُطبع) ═══ */}
+      <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/aggregates')}
+            className="rounded-lg p-2 transition-colors hover:bg-bg-secondary"
+          >
+            <ArrowRight className="h-5 w-5 text-text-secondary" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-text">
+              عرض التقرير التجميعي
+            </h1>
+            <p className="mt-1 text-sm text-text-secondary">
+              يمكنك الطباعة أو التعديل
+            </p>
           </div>
         </div>
 
-        {/* Meta Info */}
-        <Card padding="lg">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div>
-              <div className="text-xs font-medium text-text-muted uppercase mb-2">
-                النوع
-              </div>
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-primary" />
-                <span className="font-medium text-text">
-                  {template?.name_ar || '—'}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium text-text-muted uppercase mb-2">
-                المُنشئ
-              </div>
-              <div className="flex items-center gap-2">
-                <UserIcon className="w-4 h-4 text-info" />
-                <span className="font-medium text-text">
-                  {aggregate.creator?.full_name || '—'}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium text-text-muted uppercase mb-2">
-                نوع الفترة
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-text-secondary" />
-                <span className="text-text">
-                  {getPeriodLabel(aggregate.period_type)}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-xs font-medium text-text-muted uppercase mb-2">
-                التاريخ
-              </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-text-secondary" />
-                <span className="text-text">
-                  {formatDate(aggregate.created_at)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Card padding="md">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                <FileText className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-text">
-                  {aggregate.source_count}
-                </div>
-                <div className="text-sm text-text-secondary">
-                  تقرير مصدر
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <Card padding="md">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-info/10 flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-info" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-text">
-                  {totalCount}
-                </div>
-                <div className="text-sm text-text-secondary">
-                  إجمالي التقارير
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          <Card padding="md">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-warning/10 flex items-center justify-center">
-                <Star className="w-6 h-6 text-warning" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-text">
-                  {avgRating > 0 ? avgRating.toFixed(1) : '—'}
-                </div>
-                <div className="text-sm text-text-secondary">
-                  متوسط التقييم
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Chart */}
-        {ratingDistribution.length > 0 && (
-          <Card padding="lg">
-            <h3 className="text-lg font-semibold text-text mb-6 flex items-center gap-2">
-              📊 توزيع التقييمات
-            </h3>
-
-            <div style={{ width: '100%', height: 300 }}>
-              <ResponsiveContainer>
-                <BarChart data={ratingDistribution}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="rating" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (!active || !payload || payload.length === 0)
-                        return null;
-                      const item = payload[0].payload as {
-                        rating: number;
-                        count: number;
-                      };
-                      return (
-                        <div
-                          style={{
-                            backgroundColor: 'white',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: '8px',
-                            padding: '8px 12px',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                          }}
-                        >
-                          <p
-                            style={{
-                              fontSize: '13px',
-                              fontWeight: 500,
-                              marginBottom: '4px',
-                              color: '#111827',
-                            }}
-                          >
-                            ⭐ التقييم: {item.rating}
-                          </p>
-                          <p
-                            style={{
-                              fontSize: '12px',
-                              color: '#4b5563',
-                            }}
-                          >
-                            📄 العدد: {item.count} تقرير
-                          </p>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                    {ratingDistribution.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[entry.rating - 1] || '#2563eb'}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        )}
-
-        {/* Notes & Recommendations */}
-        {(notes.length > 0 || recommendations.length > 0) && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {notes.length > 0 && (
-              <Card padding="lg">
-                <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-                  📝 الملاحظات المُجمَّعة
-                  <span className="text-sm font-normal text-text-muted">
-                    ({notes.length})
-                  </span>
-                </h3>
-                <ul className="space-y-2">
-                  {notes.map((note, index) => (
-                    <li
-                      key={index}
-                      className="flex items-start gap-3 p-3 bg-bg-secondary rounded-lg"
-                    >
-                      <span className="text-primary flex-shrink-0">•</span>
-                      <span className="text-text">{note}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            )}
-
-            {recommendations.length > 0 && (
-              <Card padding="lg">
-                <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-                  💡 التوصيات المُجمَّعة
-                  <span className="text-sm font-normal text-text-muted">
-                    ({recommendations.length})
-                  </span>
-                </h3>
-                <ul className="space-y-2">
-                  {recommendations.map((rec, index) => (
-                    <li
-                      key={index}
-                      className="flex items-start gap-3 p-3 bg-bg-secondary rounded-lg"
-                    >
-                      <span className="text-success flex-shrink-0">✓</span>
-                      <span className="text-text">{rec}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            )}
-          </div>
-        )}
-
-        {/* Summary */}
-        <Card padding="lg">
-          <h3 className="text-lg font-semibold text-text mb-4">📝 ملخص</h3>
-          <div className="space-y-3 text-text">
-            <div className="flex items-center justify-between py-2 border-b border-border">
-              <span className="text-text-secondary">
-                عدد التقارير المُجمّعة
-              </span>
-              <span className="font-bold">{aggregate.source_count}</span>
-            </div>
-            <div className="flex items-center justify-between py-2 border-b border-border">
-              <span className="text-text-secondary">
-                إجمالي التقارير المُجمّعة
-              </span>
-              <span className="font-bold">{totalCount}</span>
-            </div>
-            <div className="flex items-center justify-between py-2 border-b border-border">
-              <span className="text-text-secondary">متوسط التقييم</span>
-              <span className="font-bold">
-                {avgRating > 0 ? `${avgRating.toFixed(2)} / 5` : '—'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-text-secondary">الحالة</span>
-              <span className="inline-block px-2 py-1 rounded-full text-xs font-medium bg-success/10 text-success">
-                🟢 نشط
-              </span>
-            </div>
-          </div>
-        </Card>
-
-        {/* Bottom Actions */}
-        <div className="flex items-center justify-between gap-3 pt-2">
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
-            icon={<ArrowRight className="w-4 h-4" />}
-            onClick={() => navigate('/aggregates')}
+            icon={<Edit className="h-4 w-4" />}
+            onClick={() => navigate(`/aggregates/${id}/edit`)}
           >
-            العودة إلى التجميعية
+            تعديل
+          </Button>
+          <Button
+            variant="primary"
+            icon={<Printer className="h-4 w-4" />}
+            onClick={handlePrint}
+          >
+            طباعة / PDF
           </Button>
         </div>
       </div>
 
-      {/* Delete Modal */}
-      <DeleteAggregateModal
-        isOpen={showDeleteModal}
-        aggregateTitle={template?.name_ar || 'تقرير تجميعي'}
-        aggregateType={aggregate.aggregate_type}
-        aggregateCreatorName={aggregate.creator?.full_name || '—'}
-        sourceCount={aggregate.source_count}
-        onClose={() => setShowDeleteModal(false)}
-        onConfirm={handleDelete}
-        isDeleting={saving}
-      />
-    </>
+      {/* ═══ Report Content (يُطبع) ═══ */}
+      <div ref={printRef} className="print:p-0">
+        <Card padding="lg" className="print:shadow-none print:border-0">
+          {/* ═══ Header ═══ */}
+          <div className="mb-8 border-b-2 border-border pb-6 text-center">
+            <h1 className="mb-2 text-2xl font-bold text-text">
+              التقرير التجميعي للمختص التربوي
+            </h1>
+            <h2 className="text-lg font-semibold text-primary">
+              {reportType === 'RL'
+                ? 'زيارات R.L'
+                : 'زيارات TLS (مساحات التعلم)'}
+            </h2>
+          </div>
+
+          {/* ═══ Metadata ═══ */}
+          <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <div className="flex items-start gap-2">
+                <UserIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-muted" />
+                <div className="flex-1">
+                  <span className="text-xs text-text-muted">
+                    المختص التربوي:
+                  </span>
+                  <p className="font-medium text-text">{specialistName}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <FileText className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-muted" />
+                <div className="flex-1">
+                  <span className="text-xs text-text-muted">التخصص:</span>
+                  <p className="font-medium text-text">{specialization}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-start gap-2">
+                <Building2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-muted" />
+                <div className="flex-1">
+                  <span className="text-xs text-text-muted">
+                    المنطقة التعليمية:
+                  </span>
+                  <p className="font-medium text-text">{regionName}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <Calendar className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-muted" />
+                <div className="flex-1">
+                  <span className="text-xs text-text-muted">
+                    الفترة ({periodTypeLabel}):
+                  </span>
+                  <p className="font-medium text-text">
+                    من {formatDate(periodStart)} إلى {formatDate(periodEnd)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ═══ Summary Stats ═══ */}
+          <div className="mb-8 grid grid-cols-2 gap-3">
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-center">
+              <div className="text-3xl font-bold text-primary">
+                {visits.length}
+              </div>
+              <div className="mt-1 text-xs text-text-secondary">
+                عدد الزيارات الكلية
+              </div>
+            </div>
+            <div className="rounded-lg border border-info/20 bg-info/5 p-4 text-center">
+              <div className="text-3xl font-bold text-info">
+                {manualActivities.length}
+              </div>
+              <div className="mt-1 text-xs text-text-secondary">
+                الأنشطة الإشرافية
+              </div>
+            </div>
+          </div>
+
+          {/* ═══ Section 1: Visits ═══ */}
+          <div className="mb-8">
+            <h3 className="mb-4 flex items-center gap-2 border-r-4 border-primary pr-3 text-lg font-bold text-text">
+              <FileText className="h-5 w-5 text-primary" />
+              أولاً: الزيارات
+            </h3>
+
+            <VisitsTable visits={visits} entityLabel={entityLabel} />
+          </div>
+
+          {/* ═══ Section 2: Manual Activities ═══ */}
+          <div className="mb-8">
+            <h3 className="mb-4 flex items-center gap-2 border-r-4 border-warning pr-3 text-lg font-bold text-text">
+              <Sparkles className="h-5 w-5 text-warning" />
+              ثانياً: أنشطة إشرافية أخرى
+            </h3>
+
+            {manualActivities.length === 0 ? (
+              <div className="rounded-lg border-2 border-dashed border-border bg-bg-secondary p-6 text-center">
+                <p className="text-sm text-text-muted">
+                  لا توجد أنشطة إشرافية أخرى
+                </p>
+              </div>
+            ) : (
+              <div className="w-full overflow-hidden rounded-lg border border-border">
+                <table className="w-full table-fixed border-collapse bg-surface text-sm">
+                  <thead>
+                    <tr className="border-b-2 border-border bg-bg-secondary">
+                      <th className="w-10 px-2 py-3 text-center font-bold text-text">
+                        م
+                      </th>
+                      <th className="w-28 px-2 py-3 text-center font-bold text-text">
+                        التاريخ
+                      </th>
+                      <th className="px-2 py-3 text-right font-bold text-text">
+                        النشاط
+                      </th>
+                      <th className="px-2 py-3 text-right font-bold text-text">
+                        الموضوع
+                      </th>
+                      <th className="px-2 py-3 text-right font-bold text-text">
+                        الفئة المستهدفة
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {manualActivities.map((activity, idx) => (
+                      <tr
+                        key={activity.id}
+                        className={`border-b border-border ${
+                          idx % 2 === 0
+                            ? 'bg-surface'
+                            : 'bg-bg-secondary/30'
+                        }`}
+                      >
+                        <td className="px-2 py-3 text-center align-top font-semibold text-text-muted">
+                          {idx + 1}
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-3 text-center align-top text-text text-xs">
+                          {formatDate(activity.date)}
+                        </td>
+                        <td
+                          className="px-2 py-3 text-right align-top text-text"
+                          style={breakableCellStyle}
+                        >
+                          {activity.activity || '—'}
+                        </td>
+                        <td
+                          className="px-2 py-3 text-right align-top text-text"
+                          style={breakableCellStyle}
+                        >
+                          {activity.topic || '—'}
+                        </td>
+                        <td
+                          className="px-2 py-3 text-right align-top text-text"
+                          style={breakableCellStyle}
+                        >
+                          {activity.target_group || '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ═══ Footer — Signatures ═══ */}
+          <div className="mt-12 grid grid-cols-2 gap-8 border-t-2 border-border pt-8">
+            <div className="text-center">
+              <p className="mb-12 text-sm font-medium text-text-secondary">
+                المختص التربوي
+              </p>
+              <div className="border-t border-border pt-2">
+                <p className="text-sm font-medium text-text">
+                  {specialistName}
+                </p>
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="mb-12 text-sm font-medium text-text-secondary">
+                مدير المنطقة التعليمية
+              </p>
+              <div className="border-t border-border pt-2">
+                <p className="text-sm font-medium text-text-muted">
+                  ................................
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ═══ Print Footer ═══ */}
+          <div className="mt-8 border-t border-border pt-4 text-center text-xs text-text-muted">
+            <p>
+              تم إنشاء هذا التقرير بتاريخ{' '}
+              {new Date(currentAggregate.created_at).toLocaleDateString(
+                'ar-EG',
+                {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                }
+              )}
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {/* ═══ Bottom Actions (لا يُطبع) ═══ */}
+      <div className="flex items-center justify-end gap-3 pt-2 print:hidden">
+        <Button variant="ghost" onClick={() => navigate('/aggregates')}>
+          عودة للتقارير
+        </Button>
+        <Button
+          variant="primary"
+          size="lg"
+          icon={<Printer className="h-5 w-5" />}
+          onClick={handlePrint}
+        >
+          طباعة / PDF
+        </Button>
+      </div>
+    </div>
   );
 }
+
+export default ViewAggregatePage;

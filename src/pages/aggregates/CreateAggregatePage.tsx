@@ -1,326 +1,204 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
-  BarChart3,
   Calendar,
-  CheckSquare,
-  Square,
+  Save,
   FileText,
   Building2,
   User as UserIcon,
   AlertCircle,
-  Save,
+  Sparkles,
+  BarChart3,
+  RefreshCw,
+  ExternalLink,
+  CheckCircle,
+  Info,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore } from '../../stores/entity-store';
 import { useAggregatesStore } from '../../stores/aggregates-store';
-import type {
-  AvailableAggregateTemplate,
-  AvailableReport,
-} from '../../stores/aggregates-store';
-import { Button, Card } from '../../components/ui';
-import { Loading } from '../../components/ui/Loading';
+import { Button, Card, Loading } from '../../components/ui';
+import { VisitsTable } from '../../components/aggregates/VisitsTable';
+import { ManualActivitiesTable } from '../../components/aggregates/ManualActivitiesTable';
+import type { PeriodType, ManualActivityRow } from '../../types/aggregates';
 
-// ================================================
-// Helpers
-// ================================================
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('ar-EG', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  } catch {
-    return '—';
-  }
-}
-
-function getToday(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
-function getWeekAgo(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 7);
-  return d.toISOString().split('T')[0];
-}
-
-// ================================================
-// Calculations
-// ================================================
-
-interface Calculations {
-  count: number;
-  avg_rating: number | null;
-  distribution: Record<string, number>;
-  notes: string[];
-  recommendations: string[];
-}
-
-function calculateStats(reports: AvailableReport[]): Calculations {
-  const ratings: number[] = [];
-  const distribution: Record<string, number> = {};
-  const notesSet = new Set<string>();
-  const recsSet = new Set<string>();
-
-  reports.forEach((report) => {
-    // Rating
-    const rating = report.data?.rating;
-    if (typeof rating === 'number') {
-      ratings.push(rating);
-      const key = String(rating);
-      distribution[key] = (distribution[key] || 0) + 1;
-    }
-
-    // Notes — بدون تكرار
-    const notes = report.data?.notes;
-    if (typeof notes === 'string' && notes.trim()) {
-      notesSet.add(notes.trim());
-    }
-
-    // Recommendations — بدون تكرار
-    const recs = report.data?.recommendations;
-    if (typeof recs === 'string' && recs.trim()) {
-      recsSet.add(recs.trim());
-    }
-  });
-
-  const avg =
-    ratings.length > 0
-      ? ratings.reduce((a, b) => a + b, 0) / ratings.length
-      : null;
-
-  return {
-    count: reports.length,
-    avg_rating: avg,
-    distribution,
-    notes: Array.from(notesSet),
-    recommendations: Array.from(recsSet),
-  };
-}
-
-// ================================================
-// Component
-// ================================================
+// ═══════════════════════════════════════════════════════════
+// CreateAggregatePage — الصفحة الفعلية
+// ═══════════════════════════════════════════════════════════
 
 export function CreateAggregatePage() {
   const navigate = useNavigate();
-  const { templateId: urlTemplateId } = useParams<{ templateId?: string }>();
   const { user } = useAuthStore();
   const { activeEntity } = useEntityStore();
+
   const {
     availableTemplates,
-    availableReports,
-    loading,
+    selectedTemplate,
+    calculatedPeriod,
+    periodType,
+    customPeriodStart,
+    customPeriodEnd,
+    visits,
+    visitsFetched,
+    manualActivities,
+    existingAggregate,
+    loadingTemplates,
+    loadingVisits,
     saving,
-    loadingReports,
     error,
     loadAvailableTemplates,
-    loadAvailableReports,
-    createAggregate,
-    clearAvailableReports,
-    clearAvailableTemplates,
+    selectTemplate,
+    setPeriodType,
+    setCustomPeriod,
+    calculateCurrentPeriod,
+    fetchVisits,
+    clearExistingAggregate,
+    setManualActivities,
+    saveAggregate,
+    clearSelection,
+    clearError,
   } = useAggregatesStore();
 
-  // State
-  const [step, setStep] = useState<'select' | 'fill'>('select');
-  const [selectedTemplate, setSelectedTemplate] =
-    useState<AvailableAggregateTemplate | null>(null);
-  const [periodType, setPeriodType] = useState<
-    'weekly' | 'biweekly' | 'monthly' | 'custom'
-  >('weekly');
-  const [periodStart, setPeriodStart] = useState(getWeekAgo());
-  const [periodEnd, setPeriodEnd] = useState(getToday());
-  const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(
-    new Set()
-  );
+  const [step, setStep] = useState<'select' | 'period' | 'fill'>('select');
 
-  // Load templates
+  // ═══════════════════════════════════════════
+  // Load Templates
+  // ═══════════════════════════════════════════
+
   useEffect(() => {
-    if (user && activeEntity) {
+    if (user?.id && activeEntity?.entityId) {
       loadAvailableTemplates(user.id, activeEntity.entityId);
     }
-
     return () => {
-      clearAvailableTemplates();
-      clearAvailableReports();
+      clearSelection();
+      clearError();
     };
   }, [
-    user,
-    activeEntity,
+    user?.id,
+    activeEntity?.entityId,
     loadAvailableTemplates,
-    clearAvailableTemplates,
-    clearAvailableReports,
+    clearSelection,
+    clearError,
   ]);
 
-  // Auto-select template if URL has templateId
-  useEffect(() => {
-    if (urlTemplateId && availableTemplates.length > 0 && !selectedTemplate) {
-      const t = availableTemplates.find((x) => x.id === urlTemplateId);
-      if (t) {
-        setSelectedTemplate(t);
-        setStep('fill');
-      }
-    }
-  }, [urlTemplateId, availableTemplates, selectedTemplate]);
+  // ═══════════════════════════════════════════
+  // Auto-calculate period when type/custom dates change
+  // ═══════════════════════════════════════════
 
-  // Load available reports when template changes
   useEffect(() => {
-    if (selectedTemplate && user && activeEntity && step === 'fill') {
-      loadAvailableReports({
-        sourceTemplateIds: selectedTemplate.source_template_ids,
-        periodStart,
-        periodEnd,
-        userId: user.id,
-        entityId: activeEntity.entityId,
-        scope: 'all',
-      });
+    if (step === 'period') {
+      calculateCurrentPeriod();
     }
   }, [
-    selectedTemplate,
-    periodStart,
-    periodEnd,
-    user,
-    activeEntity,
     step,
-    loadAvailableReports,
+    periodType,
+    customPeriodStart,
+    customPeriodEnd,
+    calculateCurrentPeriod,
   ]);
 
+  // ═══════════════════════════════════════════
   // Handlers
-  const handleSelectTemplate = (template: AvailableAggregateTemplate) => {
-    setSelectedTemplate(template);
-    setStep('fill');
-    navigate(`/aggregates/new/${template.id}`, { replace: true });
-  };
+  // ═══════════════════════════════════════════
 
-  const handleToggleReport = (reportId: string) => {
-    setSelectedReportIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(reportId)) {
-        next.delete(reportId);
-      } else {
-        next.add(reportId);
-      }
-      return next;
-    });
-  };
-
-  const handleSelectAll = () => {
-    if (selectedReportIds.size === availableReports.length) {
-      setSelectedReportIds(new Set());
-    } else {
-      setSelectedReportIds(new Set(availableReports.map((r) => r.id)));
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!selectedTemplate || !user || !activeEntity) return;
-
-    if (selectedReportIds.size === 0) {
-      alert('الرجاء اختيار تقرير واحد على الأقل');
-      return;
-    }
-
-    if (!periodStart || !periodEnd) {
-      alert('الرجاء تحديد الفترة الزمنية');
-      return;
-    }
-
-    const selectedReports = availableReports.filter((r) =>
-      selectedReportIds.has(r.id)
-    );
-
-    const stats = calculateStats(selectedReports);
-
-    const chartData = Object.entries(stats.distribution)
-      .map(([rating, count]) => ({
-        rating: Number(rating),
-        count,
-      }))
-      .sort((a, b) => a.rating - b.rating);
-
-    try {
-      const aggregateId = await createAggregate({
-        aggregateTemplateId: selectedTemplate.id,
-        aggregateType: selectedTemplate.aggregate_type,
-        regionId: null,
-        entityId: activeEntity.entityId,
-        periodType,
-        periodStart,
-        periodEnd,
-        sourceReportIds: Array.from(selectedReportIds),
-        calculations: {
-          count: stats.count,
-          avg_rating: stats.avg_rating,
-          distribution: stats.distribution,
-          notes: stats.notes,
-          recommendations: stats.recommendations,
-        },
-        summary: {
-          count: stats.count,
-          avg_rating: stats.avg_rating,
-          total_sources: selectedReportIds.size,
-          notes_count: stats.notes.length,
-          recommendations_count: stats.recommendations.length,
-        },
-        charts: {
-          rating_distribution: chartData,
-        },
-      });
-
-      navigate(`/aggregates/${aggregateId}`, { replace: true });
-    } catch (err) {
-      console.error('Submit error:', err);
-    }
+  const handleSelectTemplate = (template: typeof availableTemplates[0]) => {
+    selectTemplate(template);
+    setStep('period');
   };
 
   const handleBack = () => {
-    setSelectedTemplate(null);
-    setSelectedReportIds(new Set());
-    setStep('select');
-    navigate('/aggregates/new', { replace: true });
+    if (step === 'period') {
+      clearSelection();
+      setStep('select');
+    } else if (step === 'fill') {
+      setStep('period');
+      clearExistingAggregate();
+    }
   };
 
-  // ================================================
+  // ⭐ زر "إنشاء التقرير" — يجلب الزيارات
+  const handleCreateReport = async () => {
+    if (!user?.id || !activeEntity?.entityId) return;
+
+    await fetchVisits({
+      userId: user.id,
+      entityId: activeEntity.entityId,
+    });
+
+    // إذا الفترة مكتملة ولم يوجد تقرير سابق → انتقل لملء التقرير
+    const state = useAggregatesStore.getState();
+    if (
+      state.calculatedPeriod?.isComplete &&
+      !state.existingAggregate &&
+      !state.error
+    ) {
+      setStep('fill');
+    }
+  };
+
+  // ⭐ زر "حفظ التقرير"
+  const handleSave = async () => {
+    if (!user?.id || !activeEntity?.entityId) return;
+
+    try {
+      const id = await saveAggregate({
+        userId: user.id,
+        entityId: activeEntity.entityId,
+        entityName: activeEntity.entityName || '',
+      });
+      navigate(`/aggregates/${id}`);
+    } catch (err) {
+      console.error('Save failed:', err);
+    }
+  };
+
+  // ⭐ فتح التقرير الموجود
+  const handleOpenExisting = () => {
+    if (existingAggregate) {
+      navigate(`/aggregates/${existingAggregate.id}`);
+    }
+  };
+
+  // ═══════════════════════════════════════════
   // Render — Loading
-  // ================================================
-  if (loading && step === 'select') {
+  // ═══════════════════════════════════════════
+
+  if (loadingTemplates && step === 'select') {
     return <Loading message="جاري تحميل القوالب..." />;
   }
 
-  // ================================================
+  // ═══════════════════════════════════════════
   // Render — Step 1: Select Template
-  // ================================================
+  // ═══════════════════════════════════════════
+
   if (step === 'select') {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6" dir="rtl">
+        {/* Header */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/aggregates')}
-            className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-bg-secondary"
           >
-            <ArrowRight className="w-5 h-5 text-text-secondary" />
+            <ArrowRight className="h-5 w-5 text-text-secondary" />
           </button>
           <div>
             <h1 className="text-2xl font-bold text-text">
               📊 إنشاء تقرير تجميعي
             </h1>
-            <p className="text-text-secondary text-sm mt-1">
+            <p className="mt-1 text-sm text-text-secondary">
               اختر نوع التجميع الذي تريد إنشاءه
             </p>
           </div>
         </div>
 
+        {/* Empty */}
         {availableTemplates.length === 0 ? (
           <Card padding="lg">
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">📋</div>
-              <h2 className="text-xl font-bold text-text mb-2">
+            <div className="py-12 text-center">
+              <div className="mb-4 text-6xl">📋</div>
+              <h2 className="mb-2 text-xl font-bold text-text">
                 لا توجد قوالب تجميعية متاحة
               </h2>
               <p className="text-text-secondary">
@@ -329,97 +207,315 @@ export function CreateAggregatePage() {
             </div>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {availableTemplates.map((template) => (
-              <button
-                key={template.id}
-                onClick={() => handleSelectTemplate(template)}
-                className="text-right transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-primary rounded-xl"
-              >
-                <Card
-                  padding="lg"
-                  className="h-full hover:shadow-hard transition-shadow"
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {availableTemplates.map((template) => {
+              const calcs = template.calculations;
+              const reportType = calcs?.report_type;
+
+              return (
+                <button
+                  key={template.id}
+                  onClick={() => handleSelectTemplate(template)}
+                  className="rounded-xl text-right transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <div
-                    className="w-14 h-14 rounded-xl flex items-center justify-center mb-4"
-                    style={{
-                      backgroundColor: `${template.category?.color || '#2563eb'}15`,
-                      color: template.category?.color || '#2563eb',
-                    }}
+                  <Card
+                    padding="lg"
+                    className="h-full transition-shadow hover:shadow-hard"
                   >
-                    <BarChart3 className="w-7 h-7" />
-                  </div>
+                    <div
+                      className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl"
+                      style={{
+                        backgroundColor: `${template.category?.color || '#2563eb'}15`,
+                        color: template.category?.color || '#2563eb',
+                      }}
+                    >
+                      <BarChart3 className="h-7 w-7" />
+                    </div>
 
-                  <h3 className="text-lg font-bold text-text mb-2">
-                    {template.name_ar}
-                  </h3>
+                    <h3 className="mb-2 text-lg font-bold text-text">
+                      {template.name_ar}
+                    </h3>
 
-                  {template.description && (
-                    <p className="text-sm text-text-secondary mb-3 line-clamp-2">
-                      {template.description}
-                    </p>
-                  )}
+                    {template.description && (
+                      <p className="mb-3 line-clamp-2 text-sm text-text-secondary">
+                        {template.description}
+                      </p>
+                    )}
 
-                  {template.category && (
-                    <div className="mb-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
                       <span
-                        className="inline-block px-2 py-1 rounded-md text-xs font-medium"
-                        style={{
-                          backgroundColor: `${template.category.color}15`,
-                          color: template.category.color || '#2563eb',
-                        }}
+                        className={`rounded-full px-2.5 py-1 font-medium ${
+                          reportType === 'RL'
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-success/10 text-success'
+                        }`}
                       >
-                        {template.category.name_ar}
+                        {reportType === 'RL' ? 'زيارات R.L' : 'زيارات TLS'}
+                      </span>
+                      <span className="text-text-muted">
+                        {calcs?.entity_label}
                       </span>
                     </div>
-                  )}
 
-                  {template.creator_role && (
-                    <div className="text-xs text-text-muted">
-                      يُنشأ بواسطة: {template.creator_role.name_ar}
+                    <div className="mt-4 flex items-center justify-end gap-2 text-sm font-medium text-primary">
+                      <span>اختيار</span>
+                      <ArrowRight className="h-4 w-4 rotate-180" />
                     </div>
-                  )}
-
-                  <div className="flex items-center justify-end gap-2 text-primary font-medium text-sm mt-4">
-                    <span>اختيار</span>
-                    <ArrowRight className="w-4 h-4 rotate-180" />
-                  </div>
-                </Card>
-              </button>
-            ))}
+                  </Card>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
     );
   }
 
-  // ================================================
-  // Render — Step 2: Fill
-  // ================================================
+  // ═══════════════════════════════════════════
+  // Guard
+  // ═══════════════════════════════════════════
+
   if (!selectedTemplate) {
     return <Loading message="جاري التحضير..." />;
   }
 
-  const allSelected =
-    selectedReportIds.size === availableReports.length &&
-    availableReports.length > 0;
+  const calcs = selectedTemplate.calculations;
+  const reportType = calcs?.report_type || 'RL';
+  const entityLabel = calcs?.entity_label || 'الجهة';
+
+  // ═══════════════════════════════════════════
+  // Render — Step 2: Period Selection
+  // ═══════════════════════════════════════════
+
+  if (step === 'period') {
+    const periodComplete = calculatedPeriod?.isComplete ?? false;
+    const canCreate = periodComplete && !existingAggregate && !loadingVisits;
+
+    return (
+      <div className="space-y-6" dir="rtl">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleBack}
+              className="rounded-lg p-2 transition-colors hover:bg-bg-secondary"
+            >
+              <ArrowRight className="h-5 w-5 text-text-secondary" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-text">
+                {selectedTemplate.name_ar}
+              </h1>
+              <p className="mt-1 text-sm text-text-secondary">
+                حدد الفترة الزمنية للتقرير
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => navigate('/aggregates')}>
+              إلغاء
+            </Button>
+            <Button
+              variant="primary"
+              icon={<RefreshCw className="h-4 w-4" />}
+              onClick={handleCreateReport}
+              disabled={!canCreate}
+              loading={loadingVisits}
+            >
+              إنشاء التقرير
+            </Button>
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <Card padding="md" className="border-danger bg-danger/5">
+            <div className="flex items-start gap-2 text-sm text-danger">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          </Card>
+        )}
+
+        {/* Period Selection */}
+        <Card padding="lg">
+          <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
+            <Calendar className="h-5 w-5 text-primary" />
+            فترة التقرير
+          </h3>
+
+          {/* Period Type */}
+          <div className="mb-4">
+            <label className="mb-2 block text-sm font-medium text-text">
+              نوع الفترة
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {(['biweekly', 'monthly', 'custom'] as PeriodType[]).map(
+                (type) => {
+                  const labels: Record<PeriodType, string> = {
+                    biweekly: 'نصف شهري',
+                    monthly: 'شهري',
+                    custom: 'مخصص',
+                  };
+                  const active = periodType === type;
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setPeriodType(type)}
+                      className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
+                        active
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border bg-surface text-text-secondary hover:bg-bg-secondary'
+                      }`}
+                    >
+                      {labels[type]}
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          </div>
+
+          {/* Custom Dates */}
+          {periodType === 'custom' && (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-text">
+                  من تاريخ
+                </label>
+                <input
+                  type="date"
+                  value={customPeriodStart}
+                  onChange={(e) =>
+                    setCustomPeriod(e.target.value, customPeriodEnd)
+                  }
+                  className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-text">
+                  إلى تاريخ
+                </label>
+                <input
+                  type="date"
+                  value={customPeriodEnd}
+                  onChange={(e) =>
+                    setCustomPeriod(customPeriodStart, e.target.value)
+                  }
+                  className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Period Result */}
+          {calculatedPeriod && (
+            <div
+              className={`mt-4 rounded-lg border p-4 ${
+                periodComplete
+                  ? 'border-primary/20 bg-primary/5'
+                  : 'border-warning/30 bg-warning/5'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                {periodComplete ? (
+                  <Sparkles className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                ) : (
+                  <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-warning" />
+                )}
+                <div className="flex-1">
+                  <p className="mb-1 text-sm font-medium text-text">
+                    الفترة الزمنية:
+                  </p>
+                  <p className="text-sm text-text-secondary">
+                    {periodComplete
+                      ? `من ${calculatedPeriod.start} إلى ${calculatedPeriod.end}`
+                      : calculatedPeriod.label}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {/* ⭐ Existing Aggregate Warning */}
+        {existingAggregate && (
+          <Card padding="lg" className="border-warning/30 bg-warning/5">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-6 w-6 flex-shrink-0 text-warning" />
+              <div className="flex-1">
+                <h3 className="mb-2 text-base font-bold text-text">
+                  ⚠️ يوجد تقرير تجميعي لهذه الفترة مسبقاً
+                </h3>
+                <p className="mb-4 text-sm text-text-secondary">
+                  تم إنشاء تقرير تجميعي لهذه الفترة بتاريخ{' '}
+                  <span className="font-medium text-text">
+                    {new Date(existingAggregate.created_at).toLocaleDateString(
+                      'ar-EG',
+                      {
+                        day: 'numeric',
+                        month: 'long',
+                        year: 'numeric',
+                      }
+                    )}
+                  </span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="primary"
+                    icon={<ExternalLink className="h-4 w-4" />}
+                    onClick={handleOpenExisting}
+                  >
+                    فتح التقرير الموجود
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={clearExistingAggregate}
+                  >
+                    إلغاء
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Info Box */}
+        <Card padding="md" className="bg-bg-secondary">
+          <div className="flex items-start gap-2 text-sm">
+            <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+            <p className="text-text-secondary">
+              عند الضغط على "إنشاء التقرير" سيقوم النظام بجلب جميع الزيارات
+              التي وقعت ضمن الفترة المحددة تلقائياً.
+            </p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════
+  // Render — Step 3: Fill Report
+  // ═══════════════════════════════════════════
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
+    <div className="space-y-6" dir="rtl">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
             onClick={handleBack}
-            className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
+            className="rounded-lg p-2 transition-colors hover:bg-bg-secondary"
           >
-            <ArrowRight className="w-5 h-5 text-text-secondary" />
+            <ArrowRight className="h-5 w-5 text-text-secondary" />
           </button>
           <div>
             <h1 className="text-2xl font-bold text-text">
               {selectedTemplate.name_ar}
             </h1>
-            <p className="text-text-secondary text-sm mt-1">
-              حدد الفترة والتقارير المصدر
+            <p className="mt-1 text-sm text-text-secondary">
+              راجع الزيارات وأضف الأنشطة الإشرافية
             </p>
           </div>
         </div>
@@ -430,198 +526,97 @@ export function CreateAggregatePage() {
           </Button>
           <Button
             variant="primary"
-            icon={<Save className="w-4 h-4" />}
-            onClick={handleSubmit}
-            disabled={saving || selectedReportIds.size === 0}
+            icon={<Save className="h-4 w-4" />}
+            onClick={handleSave}
+            disabled={saving}
             loading={saving}
           >
-            ✅ إنشاء التقرير
+            حفظ التقرير
           </Button>
         </div>
       </div>
 
+      {/* Error */}
       {error && (
         <Card padding="md" className="border-danger bg-danger/5">
-          <div className="text-danger text-sm flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 mt-0.5" />
+          <div className="flex items-start gap-2 text-sm text-danger">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
             <span>{error}</span>
           </div>
         </Card>
       )}
 
+      {/* Success Info */}
+      {visitsFetched && (
+        <Card padding="md" className="border-success/30 bg-success/5">
+          <div className="flex items-center gap-2 text-sm text-success">
+            <CheckCircle className="h-4 w-4 flex-shrink-0" />
+            <span>
+              تم جلب الزيارات بنجاح — {visits.length} زيارة في الفترة المحددة
+            </span>
+          </div>
+        </Card>
+      )}
+
+      {/* Period Summary */}
+      {calculatedPeriod && (
+        <Card padding="md" className="bg-bg-secondary">
+          <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-text-muted" />
+              <span className="text-text-secondary">الفترة:</span>
+              <span className="font-medium text-text">
+                {calculatedPeriod.start} → {calculatedPeriod.end}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <UserIcon className="h-4 w-4 text-text-muted" />
+              <span className="text-text-secondary">المختص:</span>
+              <span className="font-medium text-text">
+                {user?.fullName || '—'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-text-muted" />
+              <span className="text-text-secondary">المنطقة:</span>
+              <span className="font-medium text-text">
+                {activeEntity?.entityName || '—'}
+              </span>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* ═══ Visits Table ═══ */}
       <Card padding="lg">
-        <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-primary" />
-          📅 فترة التقرير
+        <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
+          <FileText className="h-5 w-5 text-info" />
+          أولاً: الزيارات
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-text mb-2">
-              نوع الفترة
-            </label>
-            <select
-              value={periodType}
-              onChange={(e) =>
-                setPeriodType(
-                  e.target.value as
-                    | 'weekly'
-                    | 'biweekly'
-                    | 'monthly'
-                    | 'custom'
-                )
-              }
-              className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="weekly">أسبوعي</option>
-              <option value="biweekly">كل أسبوعين</option>
-              <option value="monthly">شهري</option>
-              <option value="custom">مخصص</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text mb-2">
-              من تاريخ
-            </label>
-            <input
-              type="date"
-              value={periodStart}
-              onChange={(e) => setPeriodStart(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text mb-2">
-              إلى تاريخ
-            </label>
-            <input
-              type="date"
-              value={periodEnd}
-              onChange={(e) => setPeriodEnd(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
-        </div>
+        <VisitsTable
+          visits={visits}
+          entityLabel={entityLabel}
+          loading={loadingVisits}
+        />
       </Card>
 
+      {/* ═══ Manual Activities ═══ */}
       <Card padding="lg">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-text flex items-center gap-2">
-            <FileText className="w-5 h-5 text-info" />
-            📄 التقارير المصدر
-            <span className="text-sm font-normal text-text-muted">
-              ({selectedReportIds.size} / {availableReports.length})
-            </span>
-          </h3>
+        <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
+          <Sparkles className="h-5 w-5 text-warning" />
+          ثانياً: أنشطة إشرافية أخرى
+        </h3>
 
-          {availableReports.length > 0 && (
-            <button
-              onClick={handleSelectAll}
-              className="flex items-center gap-2 text-sm text-primary hover:text-primary-dark transition-colors"
-            >
-              {allSelected ? (
-                <CheckSquare className="w-4 h-4" />
-              ) : (
-                <Square className="w-4 h-4" />
-              )}
-              {allSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
-            </button>
-          )}
-        </div>
-
-        {loadingReports ? (
-          <div className="text-center py-8">
-            <Loading message="جاري تحميل التقارير..." />
-          </div>
-        ) : availableReports.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-bg-secondary rounded-full mb-4">
-              <FileText className="w-8 h-8 text-text-muted" />
-            </div>
-            <h4 className="text-lg font-semibold text-text mb-2">
-              لا توجد تقارير متاحة
-            </h4>
-            <p className="text-text-secondary text-sm">
-              لم يتم العثور على تقارير في هذه الفترة
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {availableReports.map((report) => {
-              const isSelected = selectedReportIds.has(report.id);
-              return (
-                <button
-                  key={report.id}
-                  onClick={() => handleToggleReport(report.id)}
-                  className={`
-                    w-full text-right flex items-start gap-3 p-3 rounded-lg border transition-all
-                    ${
-                      isSelected
-                        ? 'bg-primary/5 border-primary/30'
-                        : 'bg-surface border-border hover:bg-bg-secondary'
-                    }
-                  `}
-                >
-                  <div className="flex-shrink-0 mt-0.5">
-                    {isSelected ? (
-                      <CheckSquare className="w-5 h-5 text-primary" />
-                    ) : (
-                      <Square className="w-5 h-5 text-text-muted" />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-text truncate">
-                        {report.template?.name_ar || 'تقرير'}
-                      </span>
-                      {report.template?.category && (
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-md font-medium"
-                          style={{
-                            backgroundColor: `${report.template.category.color}15`,
-                            color:
-                              report.template.category.color || '#2563eb',
-                          }}
-                        >
-                          {report.template.category.name_ar}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Building2 className="w-3 h-3" />
-                        {report.entity?.name_ar || '—'}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <UserIcon className="w-3 h-3" />
-                        {report.creator?.full_name || '—'}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {formatDate(report.period_start)} →{' '}
-                        {formatDate(report.period_end)}
-                      </span>
-                    </div>
-
-                    {typeof report.data?.rating === 'number' && (
-                      <div className="mt-1 text-xs">
-                        <span className="text-warning">
-                          ⭐ {report.data.rating as number} / 5
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <ManualActivitiesTable
+          activities={manualActivities}
+          onChange={(activities: ManualActivityRow[]) =>
+            setManualActivities(activities)
+          }
+        />
       </Card>
 
+      {/* Bottom Actions */}
       <div className="flex items-center justify-end gap-3 pt-2">
         <Button variant="ghost" onClick={() => navigate('/aggregates')}>
           إلغاء
@@ -629,14 +624,16 @@ export function CreateAggregatePage() {
         <Button
           variant="primary"
           size="lg"
-          icon={<Save className="w-5 h-5" />}
-          onClick={handleSubmit}
-          disabled={saving || selectedReportIds.size === 0}
+          icon={<Save className="h-5 w-5" />}
+          onClick={handleSave}
+          disabled={saving}
           loading={saving}
         >
-          ✅ إنشاء التقرير التجميعي
+          حفظ التقرير التجميعي
         </Button>
       </div>
     </div>
   );
 }
+
+export default CreateAggregatePage;
