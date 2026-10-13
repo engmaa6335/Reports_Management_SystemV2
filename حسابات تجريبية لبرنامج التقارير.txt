@@ -1,0 +1,27 @@
+حساب منسق QA
+Email: qa@edc.ps
+Password: Qa@2026
+
+حساب رئيس وحدة
+Email: chief@edc.ps
+Password: Chief@2026
+
+حساب مدير منطقة
+Email: manager@edc.ps
+Password: Manager@2026
+
+حساب مركز التطوير التربوي
+Email: edc@edc.ps
+Password: Edc@2026
+حساب مختص تجريبي
+email: specialist@edc.ps
+password: Specialist@2026
+
+Specialist password Default
+Sp@12345678
+
+School Principle Default Password
+S@12345678
+
+TLS Manger Default Password
+Tls@12345678

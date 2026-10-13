@@ -1,0 +1,243 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════
+   Theme Variables (Light - Default)
+   ═══════════════════════════════════════════════════════════ */
+:root {
+  --color-primary: #1a3a6b;
+  --color-primary-light: #eef3fa;
+  --color-primary-dark: #0f2444;
+  --color-secondary: #0891b2;
+  --color-success: #059669;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-info: #2563eb;
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f8f9fa;
+  --color-surface: #ffffff;
+  --color-border: #e5e7eb;
+  --color-text: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #9ca3af;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Base Styles
+   ═══════════════════════════════════════════════════════════ */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  direction: rtl;
+}
+
+html[lang="en"] {
+  direction: ltr;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  font-family: 'Cairo', 'Inter', system-ui, sans-serif;
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Scrollbar
+   ═══════════════════════════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Utilities
+   ═══════════════════════════════════════════════════════════ */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Print Styles — احترافي للـ PDF
+   ═══════════════════════════════════════════════════════════ */
+
+@media print {
+  /* إخفاء العناصر التفاعلية */
+  .print\:hidden,
+  .no-print {
+    display: none !important;
+  }
+
+  /* إعدادات الصفحة */
+  @page {
+    size: A4;
+    margin: 15mm 12mm;
+  }
+
+  /* الخلفية بيضاء */
+  html,
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt;
+    direction: rtl;
+  }
+
+  /* إلغاء كل الأنماط الثابتة */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* تجنّب قطع البطاقات */
+  .print-avoid-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* الصفحة الجديدة عند الحاجة */
+  .print-new-page {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  /* إخفاء ظلال البطاقات */
+  .print-clean {
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+  }
+
+  /* أزرار وروابط */
+  button,
+  a {
+    text-decoration: none !important;
+    color: black !important;
+  }
+
+  /* إخفاء Bottom Actions */
+  .print-bottom-actions {
+    display: none !important;
+  }
+}
+/* ══════════════════════════════════════════════ */
+/* Scrollbar مرئي للشريط الأفقي */
+/* ══════════════════════════════════════════════ */
+
+.scrollbar-visible::-webkit-scrollbar {
+  height: 8px;
+}
+
+.scrollbar-visible::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+.scrollbar-visible::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.4);
+  border-radius: 4px;
+}
+
+.scrollbar-visible::-webkit-scrollbar-thumb:hover {
+  background: rgba(37, 99, 235, 0.7);
+}
+
+/* Firefox */
+.scrollbar-visible {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(37, 99, 235, 0.4) rgba(0, 0, 0, 0.05);
+}
+/* ══════════════════════════════════════════════ */
+/* Scrollbar visible (اختياري — يظهر scrollbar رقيق) */
+/* ══════════════════════════════════════════════ */
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(37, 99, 235, 0.3);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(37, 99, 235, 0.5);
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(37, 99, 235, 0.3) transparent;
+}
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+/* ⭐ Animation for Bottom Sheet */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* ⭐ إخفاء Scrollbar الأفقي */
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(37, 99, 235, 0.3);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(37, 99, 235, 0.5);
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(37, 99, 235, 0.3) transparent;
+}

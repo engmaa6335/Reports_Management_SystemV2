@@ -1,0 +1,78 @@
+{
+  "common": {
+    "app_name": "منصة EDC",
+    "loading": "جاري التحميل...",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "create": "إنشاء",
+    "search": "بحث",
+    "filter": "تصفية",
+    "actions": "إجراءات",
+    "back": "رجوع",
+    "next": "التالي",
+    "previous": "السابق",
+    "yes": "نعم",
+    "no": "لا",
+    "confirm": "تأكيد",
+    "close": "إغلاق"
+  },
+  "auth": {
+    "login": "تسجيل الدخول",
+    "logout": "تسجيل الخروج",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "sign_in": "دخول",
+    "signing_in": "جاري الدخول...",
+    "invalid_credentials": "بيانات الدخول غير صحيحة",
+    "welcome": "مرحباً",
+    "login_title": "تسجيل الدخول إلى منصة EDC",
+    "login_subtitle": "أدخل بياناتك للوصول إلى النظام",
+    "no_account": "ليس لديك حساب؟ تواصل مع الدعم الفني"
+  },
+  "entity": {
+    "select_entity": "اختر الكيان",
+    "select_entity_desc": "الرجاء اختيار الكيان الذي تريد العمل عليه",
+    "switch_entity": "تبديل الكيان",
+    "enter": "دخول",
+    "no_entities": "لا يوجد كيان مرتبط بحسابك",
+    "contact_support": "تواصل مع الدعم الفني"
+  },
+  "dashboard": {
+    "title": "الرئيسية",
+    "my_reports": "تقاريري",
+    "this_month": "هذا الشهر",
+    "aggregates": "تجميعية",
+    "quick_actions": "إجراءات سريعة",
+    "recent_activity": "آخر النشاطات",
+    "create_report": "إنشاء تقرير",
+    "view_reports": "عرض التقارير",
+    "settings": "الإعدادات"
+  },
+  "notifications": {
+    "title": "التنبيهات",
+    "mark_all_read": "تحديد الكل كمقروء",
+    "no_notifications": "لا توجد تنبيهات",
+    "new": "جديد",
+    "read": "مقروء"
+  },
+  "admin": {
+    "users": "المستخدمون",
+    "entities": "الكيانات",
+    "roles": "الأدوار والصلاحيات",
+    "themes": "الثيمات",
+    "settings": "إعدادات النظام",
+    "notifications": "قواعد التنبيهات",
+    "templates": "قوالب التقارير",
+    "audit": "سجل التدقيق"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "profile": "الملف الشخصي",
+    "theme": "المظهر",
+    "language": "اللغة",
+    "notifications": "التنبيهات",
+    "logout": "تسجيل الخروج"
+  }
+}

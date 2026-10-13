@@ -1,0 +1,78 @@
+{
+  "common": {
+    "app_name": "EDC Platform",
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "actions": "Actions",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "yes": "Yes",
+    "no": "No",
+    "confirm": "Confirm",
+    "close": "Close"
+  },
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "email": "Email",
+    "password": "Password",
+    "sign_in": "Sign In",
+    "signing_in": "Signing in...",
+    "invalid_credentials": "Invalid credentials",
+    "welcome": "Welcome",
+    "login_title": "Login to EDC Platform",
+    "login_subtitle": "Enter your credentials to access the system",
+    "no_account": "Don't have an account? Contact tech support"
+  },
+  "entity": {
+    "select_entity": "Select Entity",
+    "select_entity_desc": "Please select the entity you want to work on",
+    "switch_entity": "Switch Entity",
+    "enter": "Enter",
+    "no_entities": "No entity linked to your account",
+    "contact_support": "Contact tech support"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "my_reports": "My Reports",
+    "this_month": "This Month",
+    "aggregates": "Aggregates",
+    "quick_actions": "Quick Actions",
+    "recent_activity": "Recent Activity",
+    "create_report": "Create Report",
+    "view_reports": "View Reports",
+    "settings": "Settings"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "mark_all_read": "Mark All as Read",
+    "no_notifications": "No notifications",
+    "new": "New",
+    "read": "Read"
+  },
+   "admin": {
+    "users": "Users",
+    "entities": "Entities",
+    "roles": "Roles & Permissions",
+    "themes": "Themes",
+    "settings": "System Settings",
+    "notifications": "Notification Rules",
+    "templates": "Report Templates",
+    "audit": "Audit Log"
+  },
+  "settings": {
+    "title": "Settings",
+    "profile": "Profile",
+    "theme": "Theme",
+    "language": "Language",
+    "notifications": "Notifications",
+    "logout": "Logout"
+  }
+}
