@@ -29,7 +29,7 @@ import type { Entity } from '../../types/users';
 interface ConfirmState {
   open: boolean;
   title: string;
-  message: string;
+  message: React.ReactNode; 
   confirmText: string;
   variant: 'danger' | 'warning' | 'info' | 'success';
   onConfirm: () => void | Promise<void>;
