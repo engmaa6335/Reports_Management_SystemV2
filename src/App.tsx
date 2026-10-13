@@ -31,6 +31,8 @@ import { EntityFormPage } from './pages/admin/entities/EntityFormPage';
 // ⭐ Templates
 import { TemplatesPage } from './pages/admin/templates/TemplatesPage';
 import { TemplateFormPage } from './pages/admin/templates/TemplateFormPage';
+import { TemplateDetailPage } from './pages/admin/templates/TemplateDetailPage';
+import { FieldFormPage } from './pages/admin/templates/FieldFormPage';
 
 // ⭐ Settings
 import { SettingsLayout } from './pages/settings/SettingsLayout';
@@ -114,16 +116,36 @@ function App() {
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<SettingsPage />} />
 
-            {/* ⭐ Templates — الترتيب مهم: new و edit قبل :id */}
+            {/* ⭐ Templates — الترتيب حساس! */}
+            {/* 1. قائمة القوالب */}
             <Route path="templates" element={<TemplatesPage />} />
+
+            {/* 2. إضافة قالب */}
             <Route path="templates/new" element={<TemplateFormPage />} />
+
+            {/* 3. تعديل قالب */}
             <Route
               path="templates/:id/edit"
               element={<TemplateFormPage />}
             />
-            {/* ⚠️ TODO: صفحة تفاصيل القالب */}
-            <Route path="templates/:id" element={<TemplatesPage />} />
 
+            {/* 4. حقول القالب — قبل templates/:id */}
+            <Route
+              path="templates/:id/fields/new"
+              element={<FieldFormPage />}
+            />
+            <Route
+              path="templates/:id/fields/:fieldId/edit"
+              element={<FieldFormPage />}
+            />
+
+            {/* 5. تفاصيل القالب — الأخير */}
+            <Route
+              path="templates/:id"
+              element={<TemplateDetailPage />}
+            />
+
+            {/* Notifications */}
             <Route
               path="notifications"
               element={
