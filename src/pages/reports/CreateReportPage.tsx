@@ -64,17 +64,13 @@ function isRlTemplate(template: any): boolean {
 
 // ⭐ هل الحقل يأخذ عرض كامل؟
 function isFullWidthField(field: any): boolean {
-  // indicator_group + textarea دائماً عمودان
   if (['indicator_group', 'textarea'].includes(field.field_type)) {
     return true;
   }
-
-  // ⭐ التحكم من options.full_width (يُدار من Settings)
   const opts = (field.options as any) || {};
   if (opts.full_width === true) {
     return true;
   }
-
   return false;
 }
 
@@ -119,6 +115,43 @@ function extractSections(fields: any[]): SectionData[] {
   });
 
   return Array.from(map.values()).sort((a, b) => a.order - b.order);
+}
+
+// ⭐ التحقق من اكتمال جميع المؤشرات داخل indicator_group
+function validateIndicatorGroups(
+  fields: any[],
+  formData: Record<string, unknown>
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+
+  fields.forEach((field) => {
+    if (field.field_type !== 'indicator_group') return;
+
+    const opts = (field.options as any) || {};
+    const indicators =
+      (opts.indicators as Array<{ num: number; text: string }>) || [];
+
+    if (indicators.length === 0) return;
+
+    const value = formData[field.field_key];
+    const valueMap =
+      value && typeof value === 'object'
+        ? (value as Record<string, string>)
+        : {};
+
+    // عدد المؤشرات المُقيَّمة
+    const answered = indicators.filter(
+      (ind) =>
+        valueMap[String(ind.num)] && valueMap[String(ind.num)] !== ''
+    ).length;
+
+    if (answered < indicators.length) {
+      errors[field.field_key] =
+        `يجب تقييم جميع المؤشرات (${answered}/${indicators.length})`;
+    }
+  });
+
+  return errors;
 }
 
 // ================================================
@@ -345,7 +378,7 @@ export function CreateReportPage() {
   ]);
 
   // ================================================
-  // ⭐ Ordered Fields — من order_index فقط (ديناميكي)
+  // ⭐ Ordered Fields
   // ================================================
 
   const orderedFields = useMemo(() => {
@@ -354,7 +387,7 @@ export function CreateReportPage() {
     );
   }, [fields]);
 
-  // ⭐ Sections — مستخرجة تلقائياً من options.section
+  // ⭐ Sections
   const sections = useMemo(() => {
     return extractSections(orderedFields);
   }, [orderedFields]);
@@ -382,6 +415,7 @@ export function CreateReportPage() {
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
 
+    // 1) الحقول المطلوبة العادية
     fields.forEach((field) => {
       const validation = field.validation_rules as { required?: boolean };
       if (validation?.required) {
@@ -391,6 +425,10 @@ export function CreateReportPage() {
         }
       }
     });
+
+    // ⭐ 2) التحقق من اكتمال جميع المؤشرات داخل الأقسام
+    const indicatorErrors = validateIndicatorGroups(fields, formData);
+    Object.assign(newErrors, indicatorErrors);
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;

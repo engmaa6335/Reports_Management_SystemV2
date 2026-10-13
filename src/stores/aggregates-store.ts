@@ -327,12 +327,13 @@ export const useAggregatesStore = create<AggregatesState>((set, get) => ({
       }
 
       const visits = await api.fetchVisitsInPeriod({
-        sourceTemplateId,
-        periodStart: period.start,
-        periodEnd: period.end,
-        userId,
-        reportType,
-      });
+          sourceTemplateId,
+          periodStart: period.start,
+          periodEnd: period.end,
+          userId,
+          entityId,          // ⭐ يجب أن يكون موجوداً
+          reportType,
+        });
 
       set({
         visits,

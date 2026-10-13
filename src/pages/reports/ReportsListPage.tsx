@@ -43,24 +43,14 @@ function getStatusBadge(status: string): {
   className: string;
 } {
   const badges: Record<string, { label: string; className: string }> = {
-    active: {
-      label: '🟢 نشط',
-      className: 'bg-success/10 text-success',
-    },
-    updated: {
-      label: '🔵 محدّث',
-      className: 'bg-info/10 text-info',
-    },
-    aggregated: {
-      label: '🟡 مُجمّع',
-      className: 'bg-warning/10 text-warning',
-    },
+    active: { label: '🟢 نشط', className: 'bg-success/10 text-success' },
+    updated: { label: '🔵 محدّث', className: 'bg-info/10 text-info' },
+    aggregated: { label: '🟡 مُجمّع', className: 'bg-warning/10 text-warning' },
     archived: {
       label: '⚪ مؤرشف',
       className: 'bg-text-muted/10 text-text-muted',
     },
   };
-
   return (
     badges[status] || {
       label: status,
@@ -80,7 +70,6 @@ function getPeriodLabel(periodType: string | null): string {
   return labels[periodType] || periodType;
 }
 
-// ⭐ هل يمكن لهذا الدور إنشاء تقارير؟
 function canCreateReports(roleCode: string | undefined): boolean {
   if (!roleCode) return false;
   return [
@@ -95,11 +84,25 @@ function canCreateReports(roleCode: string | undefined): boolean {
   ].includes(roleCode);
 }
 
+// ⭐ كشف نوع القالب
+function getTemplateKind(
+  templateCode: string | undefined
+): 'tls' | 'rl' | 'other' {
+  if (!templateCode) return 'other';
+  const code = String(templateCode).toLowerCase();
+  if (code.includes('tls')) return 'tls';
+  if (code.includes('rl') || code.includes('r_l') || code.includes('r-l')) {
+    return 'rl';
+  }
+  return 'other';
+}
+
 // ================================================
 // Types
 // ================================================
 
-type TabType = 'all' | 'active' | 'updated' | 'aggregated' | 'archived';
+type StatusFilter = 'all' | 'active' | 'updated' | 'aggregated' | 'archived';
+type KindFilter = 'all' | 'rl' | 'tls';
 
 // ================================================
 // Component
@@ -121,18 +124,15 @@ export function ReportsListPage() {
   const { templates, loading: templatesLoading, loadAvailableTemplates } =
     useTemplatesStore();
 
-  const [activeTab, setActiveTab] = useState<TabType>('all');
-  const [showFilters, setShowFilters] = useState(false);
+  // ⭐ الفلتر الموحّد
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // 🔑 هل يمكن رؤية كل التقارير؟
   const canViewAll = ['tech_support', 'edc_viewer', 'qa_chief'].includes(
     activeEntity?.roleCode || ''
   );
-
-  // ⭐ هل يمكن إنشاء تقارير؟ (حسب الدور فقط — لا يعتمد على templates.length)
   const allowCreate = canCreateReports(activeEntity?.roleCode);
-
-  // ⭐ هل لا يوجد قوالب متاحة؟
   const noTemplates = !templatesLoading && templates.length === 0;
 
   // تحميل التقارير
@@ -149,29 +149,61 @@ export function ReportsListPage() {
     }
   }, [activeEntity?.roleCode, activeEntity?.entityId, loadAvailableTemplates]);
 
-  // 🔑 فلترة حسب التبويب + البحث
+  // ⭐ الفلترة الموحّدة
   const filteredReports = useMemo(() => {
     let result = reports;
 
-    if (activeTab !== 'all') {
-      result = result.filter((r) => r.status === activeTab);
+    // الحالة
+    if (statusFilter !== 'all') {
+      result = result.filter((r) => r.status === statusFilter);
     }
 
-    if (filters.searchQuery) {
-      const query = filters.searchQuery.toLowerCase();
+    // النوع (من الأزرار العلوية)
+    if (kindFilter !== 'all') {
       result = result.filter(
-        (r) =>
-          r.template?.name_ar?.toLowerCase().includes(query) ||
-          r.entity?.name_ar?.toLowerCase().includes(query) ||
-          r.creator?.full_name?.toLowerCase().includes(query)
+        (r) => getTemplateKind(r.template?.code) === kindFilter
       );
     }
 
-    return result;
-  }, [reports, activeTab, filters.searchQuery]);
+    // البحث
+    if (filters.searchQuery) {
+      const q = filters.searchQuery.toLowerCase();
+      result = result.filter(
+        (r) =>
+          r.template?.name_ar?.toLowerCase().includes(q) ||
+          r.entity?.name_ar?.toLowerCase().includes(q) ||
+          r.creator?.full_name?.toLowerCase().includes(q)
+      );
+    }
 
-  // 🔑 عدادات التبويبات
-  const tabCounts = useMemo(
+    // ⭐ الفترة الزمنية من
+    if (filters.periodStart) {
+      result = result.filter((r) => {
+        const d = r.period_start || r.created_at;
+        return d && d >= filters.periodStart!;
+      });
+    }
+
+    // ⭐ الفترة الزمنية إلى
+    if (filters.periodEnd) {
+      result = result.filter((r) => {
+        const d = r.period_start || r.created_at;
+        return d && d <= filters.periodEnd!;
+      });
+    }
+
+    return result;
+  }, [
+    reports,
+    statusFilter,
+    kindFilter,
+    filters.searchQuery,
+    filters.periodStart,
+    filters.periodEnd,
+  ]);
+
+  // عدادات الحالة
+  const statusCounts = useMemo(
     () => ({
       all: reports.length,
       active: reports.filter((r) => r.status === 'active').length,
@@ -182,7 +214,7 @@ export function ReportsListPage() {
     [reports]
   );
 
-  // 🔑 عنوان الصفحة حسب الدور
+  // عنوان الصفحة
   const pageTitle = useMemo(() => {
     const role = activeEntity?.roleCode;
     if (role === 'tech_support') return '📝 جميع التقارير';
@@ -203,9 +235,7 @@ export function ReportsListPage() {
 
   return (
     <div className="space-y-6">
-      {/* ═══════════════════════════════════════════════ */}
       {/* Header */}
-      {/* ═══════════════════════════════════════════════ */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text">{pageTitle}</h1>
@@ -216,7 +246,6 @@ export function ReportsListPage() {
           </p>
         </div>
 
-        {/* ⭐ زر الإنشاء — يظهر حسب الدور فقط */}
         {allowCreate && (
           <Button
             variant="primary"
@@ -228,9 +257,7 @@ export function ReportsListPage() {
         )}
       </div>
 
-      {/* ═══════════════════════════════════════════════ */}
-      {/* Warning: No templates for this region */}
-      {/* ═══════════════════════════════════════════════ */}
+      {/* Warning: No templates */}
       {allowCreate && noTemplates && (
         <Card padding="md" className="border-warning/30 bg-warning/5">
           <div className="flex items-start gap-3">
@@ -248,9 +275,7 @@ export function ReportsListPage() {
         </Card>
       )}
 
-      {/* ═══════════════════════════════════════════════ */}
-      {/* Stats Cards */}
-      {/* ═══════════════════════════════════════════════ */}
+      {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={<FileText className="w-5 h-5" />}
@@ -279,40 +304,41 @@ export function ReportsListPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════ */}
-      {/* Tabs + Search */}
+      {/* ⭐ الفلتر الموحّد الواحد */}
       {/* ═══════════════════════════════════════════════ */}
       <Card padding="none">
+        {/* التبويبات */}
         <div className="border-b border-border overflow-x-auto">
           <div className="flex items-center gap-1 px-2 min-w-max">
             <TabButton
-              active={activeTab === 'all'}
-              onClick={() => setActiveTab('all')}
+              active={statusFilter === 'all'}
+              onClick={() => setStatusFilter('all')}
               label="الكل"
-              count={tabCounts.all}
+              count={statusCounts.all}
             />
             <TabButton
-              active={activeTab === 'active'}
-              onClick={() => setActiveTab('active')}
+              active={statusFilter === 'active'}
+              onClick={() => setStatusFilter('active')}
               label="🟢 نشط"
-              count={tabCounts.active}
+              count={statusCounts.active}
             />
             <TabButton
-              active={activeTab === 'updated'}
-              onClick={() => setActiveTab('updated')}
+              active={statusFilter === 'updated'}
+              onClick={() => setStatusFilter('updated')}
               label="🔵 محدّث"
-              count={tabCounts.updated}
+              count={statusCounts.updated}
             />
             <TabButton
-              active={activeTab === 'aggregated'}
-              onClick={() => setActiveTab('aggregated')}
+              active={statusFilter === 'aggregated'}
+              onClick={() => setStatusFilter('aggregated')}
               label="🟡 مُجمّع"
-              count={tabCounts.aggregated}
+              count={statusCounts.aggregated}
             />
             <TabButton
-              active={activeTab === 'archived'}
-              onClick={() => setActiveTab('archived')}
+              active={statusFilter === 'archived'}
+              onClick={() => setStatusFilter('archived')}
               label="⚪ مؤرشف"
-              count={tabCounts.archived}
+              count={statusCounts.archived}
             />
           </div>
         </div>
@@ -329,21 +355,24 @@ export function ReportsListPage() {
           </div>
 
           <Button
-            variant="secondary"
+            variant={showAdvanced ? 'primary' : 'secondary'}
             icon={<Filter className="w-4 h-4" />}
-            onClick={() => setShowFilters(!showFilters)}
+            onClick={() => setShowAdvanced(!showAdvanced)}
           >
-            فلترة متقدمة
+            خيارات متقدمة
           </Button>
 
           {(filters.searchQuery ||
-            filters.categoryCode ||
-            filters.templateId ||
-            filters.periodStart) && (
+            filters.periodStart ||
+            filters.periodEnd ||
+            kindFilter !== 'all' ||
+            statusFilter !== 'all') && (
             <Button
               variant="ghost"
               icon={<X className="w-4 h-4" />}
               onClick={() => {
+                setStatusFilter('all');
+                setKindFilter('all');
                 setFilters({
                   searchQuery: '',
                   status: '',
@@ -354,7 +383,6 @@ export function ReportsListPage() {
                   periodStart: '',
                   periodEnd: '',
                 });
-                setActiveTab('all');
               }}
             >
               مسح
@@ -362,32 +390,32 @@ export function ReportsListPage() {
           )}
         </div>
 
-        {/* Advanced Filters */}
-        {showFilters && (
+        {/* ⭐ الخيارات المتقدمة */}
+        {showAdvanced && (
           <div className="px-4 pb-4 border-t border-border pt-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* نوع التقرير */}
               <div>
                 <label className="block text-xs font-medium text-text-muted mb-1">
-                  الفئة
+                  نوع التقرير
                 </label>
                 <select
-                  value={filters.categoryCode || ''}
+                  value={kindFilter}
                   onChange={(e) =>
-                    setFilters({ categoryCode: e.target.value })
+                    setKindFilter(e.target.value as KindFilter)
                   }
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm"
                 >
-                  <option value="">كل الفئات</option>
-                  <option value="rl">زيارات R.L</option>
-                  <option value="tls">تقارير TLS</option>
-                  <option value="edu">تقارير تربوية</option>
-                  <option value="other">تقارير أخرى</option>
+                  <option value="all">كل التقارير</option>
+                  <option value="rl">زيارات مختص تربوي R.L</option>
+                  <option value="tls">زيارات مختص تربوي TLS</option>
                 </select>
               </div>
 
+              {/* الفترة الزمنية من */}
               <div>
                 <label className="block text-xs font-medium text-text-muted mb-1">
-                  من تاريخ
+                  الفترة الزمنية — من
                 </label>
                 <input
                   type="date"
@@ -399,16 +427,15 @@ export function ReportsListPage() {
                 />
               </div>
 
+              {/* الفترة الزمنية إلى */}
               <div>
                 <label className="block text-xs font-medium text-text-muted mb-1">
-                  إلى تاريخ
+                  الفترة الزمنية — إلى
                 </label>
                 <input
                   type="date"
                   value={filters.periodEnd || ''}
-                  onChange={(e) =>
-                    setFilters({ periodEnd: e.target.value })
-                  }
+                  onChange={(e) => setFilters({ periodEnd: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm"
                 />
               </div>
@@ -417,9 +444,7 @@ export function ReportsListPage() {
         )}
       </Card>
 
-      {/* ═══════════════════════════════════════════════ */}
       {/* Error */}
-      {/* ═══════════════════════════════════════════════ */}
       {error && (
         <Card padding="md" className="border-danger bg-danger/5">
           <div className="text-danger text-sm flex items-center gap-2">
@@ -429,9 +454,7 @@ export function ReportsListPage() {
         </Card>
       )}
 
-      {/* ═══════════════════════════════════════════════ */}
       {/* Empty State */}
-      {/* ═══════════════════════════════════════════════ */}
       {!loading && filteredReports.length === 0 && (
         <Card padding="lg">
           <div className="text-center py-16">
@@ -465,9 +488,7 @@ export function ReportsListPage() {
         </Card>
       )}
 
-      {/* ═══════════════════════════════════════════════ */}
       {/* Reports Table */}
-      {/* ═══════════════════════════════════════════════ */}
       {filteredReports.length > 0 && (
         <Card padding="none">
           <div className="overflow-x-auto">
@@ -616,6 +637,7 @@ function StatCard({ icon, label, value, color }: StatCardProps) {
   );
 }
 
+// ⭐ زر التبويب — نفس شكل الفلتر الثاني الأصلي
 interface TabButtonProps {
   active: boolean;
   onClick: () => void;

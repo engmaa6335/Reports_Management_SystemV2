@@ -37,7 +37,7 @@ function getGradeLabel(gradeValue: string): string {
   return grades[gradeValue] || gradeValue || '—';
 }
 
-// ⭐ تحقق من صحة UUID (صيغة 8-4-4-4-12)
+// ⭐ تحقق من صحة UUID
 function isValidUuid(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   if (value.length < 32 || value.length > 40) return false;
@@ -50,9 +50,6 @@ function isValidUuid(value: unknown): value is string {
 // Aggregate Templates
 // ═══════════════════════════════════════════════════════════
 
-/**
- * ⭐ جلب القوالب التجميعية المتاحة للمستخدم
- */
 export async function listAvailableAggregateTemplates(
   userId: string,
   entityId: string
@@ -141,7 +138,7 @@ export async function getAggregateTemplateById(
 }
 
 // ═══════════════════════════════════════════════════════════
-// ⭐ Fetch Visits — القلب النابض للتقرير التجميعي
+// ⭐ Fetch Visits — مع فلترة المنطقة
 // ═══════════════════════════════════════════════════════════
 
 interface FetchVisitsParams {
@@ -149,6 +146,7 @@ interface FetchVisitsParams {
   periodStart: string;
   periodEnd: string;
   userId: string;
+  entityId: string;      // ⭐ المنطقة النشطة
   reportType: 'RL' | 'TLS';
 }
 
@@ -157,6 +155,7 @@ export async function fetchVisitsInPeriod({
   periodStart,
   periodEnd,
   userId,
+  entityId,
   reportType,
 }: FetchVisitsParams): Promise<VisitRow[]> {
   console.log('🔍 fetchVisitsInPeriod:', {
@@ -164,24 +163,28 @@ export async function fetchVisitsInPeriod({
     periodStart,
     periodEnd,
     userId,
+    entityId,
     reportType,
   });
 
+  // ⭐ جلب فقط التقارير التي تتبع لنفس المنطقة
   const { data: reports, error } = await supabase
     .from('reports')
     .select('id, data, entity_id, created_at')
     .eq('template_id', sourceTemplateId)
     .eq('created_by', userId)
+    .eq('entity_id', entityId)
     .eq('is_deleted', false);
 
   if (error) throw error;
   if (!reports || reports.length === 0) {
-    console.log('ℹ️ No reports found');
+    console.log('ℹ️ No reports found for this entity');
     return [];
   }
 
-  console.log(`📄 Found ${reports.length} total reports`);
+  console.log(`📄 Found ${reports.length} reports for entity ${entityId}`);
 
+  // فلترة محلية على visit_date
   const filtered = reports.filter((r) => {
     const visitDate = r.data?.visit_date;
     if (typeof visitDate !== 'string') return false;
@@ -245,9 +248,9 @@ export async function fetchVisitsInPeriod({
 
   return sorted.map((r, index) => {
     const d = r.data || {};
-    const entityId = d[entityField];
-    const entityName = isValidUuid(entityId)
-      ? entityMap.get(entityId) || '—'
+    const entityIdValue = d[entityField];
+    const entityName = isValidUuid(entityIdValue)
+      ? entityMap.get(entityIdValue) || '—'
       : '—';
 
     return {
@@ -265,7 +268,7 @@ export async function fetchVisitsInPeriod({
 }
 
 // ═══════════════════════════════════════════════════════════
-// ⭐ Check Existing Aggregate for Same Period
+// Check Existing Aggregate
 // ═══════════════════════════════════════════════════════════
 
 export interface ExistingAggregateInfo {
@@ -276,9 +279,6 @@ export interface ExistingAggregateInfo {
   period_type: string | null;
 }
 
-/**
- * ⭐ التحقق من وجود تقرير تجميعي سابق لنفس الفترة
- */
 export async function findExistingAggregate({
   userId,
   entityId,
@@ -315,7 +315,7 @@ export async function findExistingAggregate({
 }
 
 // ═══════════════════════════════════════════════════════════
-// Aggregate Reports — List
+// List Reports
 // ═══════════════════════════════════════════════════════════
 
 export async function listUserAggregates(
@@ -363,10 +363,6 @@ export async function listUserAggregates(
   return results;
 }
 
-// ═══════════════════════════════════════════════════════════
-// Aggregate Reports — Single
-// ═══════════════════════════════════════════════════════════
-
 export async function getAggregateById(
   id: string
 ): Promise<AggregateReportWithRelations | null> {
@@ -389,7 +385,7 @@ export async function getAggregateById(
 }
 
 // ═══════════════════════════════════════════════════════════
-// Create Specialist Aggregate
+// Create
 // ═══════════════════════════════════════════════════════════
 
 export async function createSpecialistAggregate(
@@ -465,7 +461,7 @@ export async function createSpecialistAggregate(
 }
 
 // ═══════════════════════════════════════════════════════════
-// Update Specialist Aggregate
+// Update
 // ═══════════════════════════════════════════════════════════
 
 export async function updateSpecialistAggregate(
