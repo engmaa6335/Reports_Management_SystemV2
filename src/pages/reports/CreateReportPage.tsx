@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, ArrowLeft, Save, X, FileText } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Save, X, FileText, Loader2 } from 'lucide-react';
 import { useTemplatesStore } from '../../stores/templates-store';
 import { useReportsStore } from '../../stores/reports-store';
 import { useAuthStore } from '../../stores/auth-store';
@@ -62,7 +62,6 @@ function isRlTemplate(template: any): boolean {
   return code.includes('rl') || catCode === 'rl';
 }
 
-// ⭐ هل الحقل يأخذ عرض كامل؟
 function isFullWidthField(field: any): boolean {
   if (['indicator_group', 'textarea'].includes(field.field_type)) {
     return true;
@@ -74,7 +73,6 @@ function isFullWidthField(field: any): boolean {
   return false;
 }
 
-// ⭐ استخراج الأقسام ديناميكياً من options.section
 interface SectionData {
   key: string;
   title: string;
@@ -101,9 +99,7 @@ function extractSections(fields: any[]): SectionData[] {
         title: sectionOpts.title || '📌 حقول إضافية',
         icon: sectionOpts.icon || '📌',
         description: sectionOpts.description,
-        accentColor: ['primary', 'success', 'warning', 'info'].includes(
-          accent
-        )
+        accentColor: ['primary', 'success', 'warning', 'info'].includes(accent)
           ? accent
           : 'primary',
         order: sectionOpts.order ?? 9999,
@@ -115,43 +111,6 @@ function extractSections(fields: any[]): SectionData[] {
   });
 
   return Array.from(map.values()).sort((a, b) => a.order - b.order);
-}
-
-// ⭐ التحقق من اكتمال جميع المؤشرات داخل indicator_group
-function validateIndicatorGroups(
-  fields: any[],
-  formData: Record<string, unknown>
-): Record<string, string> {
-  const errors: Record<string, string> = {};
-
-  fields.forEach((field) => {
-    if (field.field_type !== 'indicator_group') return;
-
-    const opts = (field.options as any) || {};
-    const indicators =
-      (opts.indicators as Array<{ num: number; text: string }>) || [];
-
-    if (indicators.length === 0) return;
-
-    const value = formData[field.field_key];
-    const valueMap =
-      value && typeof value === 'object'
-        ? (value as Record<string, string>)
-        : {};
-
-    // عدد المؤشرات المُقيَّمة
-    const answered = indicators.filter(
-      (ind) =>
-        valueMap[String(ind.num)] && valueMap[String(ind.num)] !== ''
-    ).length;
-
-    if (answered < indicators.length) {
-      errors[field.field_key] =
-        `يجب تقييم جميع المؤشرات (${answered}/${indicators.length})`;
-    }
-  });
-
-  return errors;
 }
 
 // ================================================
@@ -185,6 +144,12 @@ export function CreateReportPage() {
   const [hasTlsCenters, setHasTlsCenters] = useState<boolean | null>(null);
   const [hasSchools, setHasSchools] = useState<boolean | null>(null);
   const [checkingEntities, setCheckingEntities] = useState(false);
+
+  // ⭐ حالة تحميل مدير المركز
+  const [loadingManager, setLoadingManager] = useState(false);
+
+  // ⭐ مرجع لتتبع المركز السابق
+  const prevCenterIdRef = useRef<string>('');
 
   // ================================================
   // Effects
@@ -271,6 +236,7 @@ export function CreateReportPage() {
     }
   }, [selectedTemplate, step]);
 
+  // ⭐ الحقول التلقائية — user/entity/date
   useEffect(() => {
     if (!selectedTemplate || fields.length === 0 || !user || !activeEntity) {
       return;
@@ -301,8 +267,10 @@ export function CreateReportPage() {
     if (Object.keys(autoValues).length > 0) {
       setFormData((prev) => ({ ...autoValues, ...prev }));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTemplate, fields, user, activeEntity]);
 
+  // ⭐⭐⭐ الحقول التلقائية — manager_name (مع إعادة الجلب عند التغيير)
   useEffect(() => {
     if (!selectedTemplate || fields.length === 0) return;
 
@@ -323,6 +291,13 @@ export function CreateReportPage() {
 
     const centerId = formData[centerSelectField.field_key] as string;
 
+    // ⭐ إذا لم يتغير المركز → لا تفعل شيئاً
+    if (centerId === prevCenterIdRef.current) return;
+
+    // ⭐ حدّث المرجع
+    prevCenterIdRef.current = centerId || '';
+
+    // ⭐ إذا فارغ → امسح الحقول
     if (!centerId) {
       setFormData((prev) => {
         const next = { ...prev };
@@ -331,38 +306,44 @@ export function CreateReportPage() {
         });
         return next;
       });
+      setLoadingManager(false);
       return;
     }
 
-    const allFilled = autoFieldsWithSelectedEntity.every(
-      (f) => formData[f.field_key] && formData[f.field_key] !== ''
-    );
-    if (allFilled) return;
-
+    // ⭐ اجلب دائماً عند تغيير المركز
     const fetchSelectedEntity = async () => {
-      const { data, error } = await supabase
-        .from('entities')
-        .select('contact_info, name_en, name_ar')
-        .eq('id', centerId)
-        .single();
+      setLoadingManager(true);
 
-      if (error) {
-        console.error('❌ Error fetching selected entity:', error);
-        return;
-      }
+      try {
+        const { data, error } = await supabase
+          .from('entities')
+          .select('contact_info, name_en, name_ar')
+          .eq('id', centerId)
+          .single();
 
-      const contactInfo = (data?.contact_info as any) || {};
+        if (error) {
+          console.error('❌ Error fetching selected entity:', error);
+          setLoadingManager(false);
+          return;
+        }
 
-      setFormData((prev) => {
-        const next = { ...prev };
-        autoFieldsWithSelectedEntity.forEach((f) => {
-          const opts = (f.options as any) || {};
-          if (opts.auto_source === 'selected_entity.manager_name') {
-            next[f.field_key] = contactInfo.manager_name || '';
-          }
+        const contactInfo = (data?.contact_info as any) || {};
+
+        setFormData((prev) => {
+          const next = { ...prev };
+          autoFieldsWithSelectedEntity.forEach((f) => {
+            const opts = (f.options as any) || {};
+            if (opts.auto_source === 'selected_entity.manager_name') {
+              next[f.field_key] = contactInfo.manager_name || '';
+            }
+          });
+          return next;
         });
-        return next;
-      });
+      } catch (err) {
+        console.error('❌ Exception fetching selected entity:', err);
+      } finally {
+        setLoadingManager(false);
+      }
     };
 
     fetchSelectedEntity();
@@ -378,7 +359,7 @@ export function CreateReportPage() {
   ]);
 
   // ================================================
-  // ⭐ Ordered Fields
+  // Ordered Fields
   // ================================================
 
   const orderedFields = useMemo(() => {
@@ -387,7 +368,6 @@ export function CreateReportPage() {
     );
   }, [fields]);
 
-  // ⭐ Sections
   const sections = useMemo(() => {
     return extractSections(orderedFields);
   }, [orderedFields]);
@@ -415,7 +395,6 @@ export function CreateReportPage() {
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    // 1) الحقول المطلوبة العادية
     fields.forEach((field) => {
       const validation = field.validation_rules as { required?: boolean };
       if (validation?.required) {
@@ -425,10 +404,6 @@ export function CreateReportPage() {
         }
       }
     });
-
-    // ⭐ 2) التحقق من اكتمال جميع المؤشرات داخل الأقسام
-    const indicatorErrors = validateIndicatorGroups(fields, formData);
-    Object.assign(newErrors, indicatorErrors);
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -475,6 +450,7 @@ export function CreateReportPage() {
     setFormData({});
     setErrors({});
     setStep('select');
+    prevCenterIdRef.current = '';
     navigate('/reports/new');
   };
 
@@ -606,11 +582,22 @@ export function CreateReportPage() {
     return <Loading message="جاري تحميل القالب..." />;
   }
 
-  // ⭐ دالة عرض الحقل
   const renderField = (field: any) => {
     const fullWidth = isFullWidthField(field);
+
+    // ⭐ مؤشر تحميل لـ manager_name
+    const isManagerField =
+      field.field_type === 'auto_filled' &&
+      (field.options as any)?.auto_source === 'selected_entity.manager_name';
+
     return (
       <div key={field.id} className={fullWidth ? 'md:col-span-2' : ''}>
+        {isManagerField && loadingManager && (
+          <div className="mb-1 flex items-center gap-1.5 text-xs text-text-muted">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>جاري جلب بيانات المدير...</span>
+          </div>
+        )}
         <DynamicField
           field={field}
           value={formData[field.field_key]}
@@ -687,7 +674,7 @@ export function CreateReportPage() {
         </Card>
       )}
 
-      {/* ⭐ Sections — ديناميكية */}
+      {/* Sections */}
       <div className="space-y-6">
         {sections.map((section) => (
           <FormSection
@@ -723,3 +710,5 @@ export function CreateReportPage() {
     </div>
   );
 }
+
+export default CreateReportPage;
