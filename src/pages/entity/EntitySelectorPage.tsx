@@ -6,7 +6,16 @@ import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore, type UserEntity } from '../../stores/entity-store';
 import { Button, Card } from '../../components/ui';
 
-// خريطة الأيقونات
+// ═══════════════════════════════════════════════════════════
+// ⭐ أنواع الكيانات الإدارية العليا (لا تظهر للمستخدم)
+// ═══════════════════════════════════════════════════════════
+
+const HIDDEN_ENTITY_TYPES = ['edu_unit', 'edc', 'qa_unit'];
+
+// ═══════════════════════════════════════════════════════════
+// Icons
+// ═══════════════════════════════════════════════════════════
+
 const entityIcons: Record<string, React.ReactNode> = {
   region: <MapPin className="w-8 h-8" />,
   school: <Building2 className="w-8 h-8" />,
@@ -16,7 +25,6 @@ const entityIcons: Record<string, React.ReactNode> = {
   edc: <Landmark className="w-8 h-8" />,
 };
 
-// خريطة الألوان
 const entityColors: Record<string, string> = {
   region: 'bg-info/10 text-info',
   school: 'bg-primary/10 text-primary',
@@ -30,17 +38,33 @@ export function EntitySelectorPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { entities, loading, initialized, loadUserEntities, setActiveEntity } =
-    useEntityStore();
+  const {
+    entities: allEntities,
+    loading,
+    initialized,
+    loadUserEntities,
+    setActiveEntity,
+  } = useEntityStore();
 
-  // تحميل الكيانات
+  // ⭐ فلترة الكيانات الإدارية
+  const entities = allEntities.filter(
+    (e) => !HIDDEN_ENTITY_TYPES.includes(e.entityTypeCode || '')
+  );
+
+  // ═══════════════════════════════════════════
+  // Load entities
+  // ═══════════════════════════════════════════
+
   useEffect(() => {
     if (user && !initialized) {
       loadUserEntities(user.id);
     }
   }, [user, initialized, loadUserEntities]);
 
-  // إذا كان هناك كيان واحد فقط → دخول مباشر
+  // ═══════════════════════════════════════════
+  // Auto-select if only one visible entity
+  // ═══════════════════════════════════════════
+
   useEffect(() => {
     if (initialized && entities.length === 1) {
       setActiveEntity(entities[0]);
@@ -48,12 +72,15 @@ export function EntitySelectorPage() {
     }
   }, [initialized, entities, setActiveEntity, navigate]);
 
-  // إذا لم يكن هناك كيانات
+  // ═══════════════════════════════════════════
+  // Empty state
+  // ═══════════════════════════════════════════
+
   if (initialized && entities.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg-secondary p-4">
         <Card padding="lg" className="max-w-md text-center">
-          <div className="text-6xl mb-4">⚠️</div>
+          <div className="text-6xl mb-4">🚫</div>
           <h1 className="text-xl font-bold text-text mb-2">
             {t('entity.no_entities')}
           </h1>
@@ -73,6 +100,10 @@ export function EntitySelectorPage() {
     navigate('/dashboard');
   };
 
+  // ═══════════════════════════════════════════
+  // Render
+  // ═══════════════════════════════════════════
+
   return (
     <div className="min-h-screen bg-bg-secondary p-6">
       <div className="max-w-5xl mx-auto">
@@ -85,7 +116,7 @@ export function EntitySelectorPage() {
             {t('entity.select_entity_desc')}
           </p>
           <p className="text-text-muted text-sm mt-2">
-            لديك {entities.length} كيان مرتبط بحسابك
+            لديك {entities.length} كيان متاح للدخول
           </p>
         </div>
 
@@ -117,7 +148,9 @@ export function EntitySelectorPage() {
                       ${entityColors[entity.entityTypeCode] || 'bg-primary/10 text-primary'}
                     `}
                   >
-                    {entityIcons[entity.entityTypeCode] || <Building2 className="w-8 h-8" />}
+                    {entityIcons[entity.entityTypeCode] || (
+                      <Building2 className="w-8 h-8" />
+                    )}
                   </div>
 
                   {/* Type */}
@@ -160,3 +193,5 @@ export function EntitySelectorPage() {
     </div>
   );
 }
+
+export default EntitySelectorPage;
