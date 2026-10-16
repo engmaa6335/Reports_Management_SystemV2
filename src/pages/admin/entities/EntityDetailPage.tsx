@@ -230,7 +230,7 @@ export function EntityDetailPage() {
       onConfirm: async () => {
         try {
           await hardDelete(entity.id);
-          navigate('/admin/entities', { replace: true });
+          navigate('/settings/entities', { replace: true });
         } catch (err) {
           // الخطأ سيظهر في error banner
         }
@@ -254,7 +254,7 @@ export function EntityDetailPage() {
             <Button
               variant="primary"
               icon={<ArrowRight className="w-4 h-4" />}
-              onClick={() => navigate('/admin/entities')}
+              onClick={() => navigate('/settings/entities')}
             >
               العودة للكيانات
             </Button>
@@ -281,7 +281,7 @@ export function EntityDetailPage() {
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/admin/entities')}
+            onClick={() => navigate('/settings/entities')}
             className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
           >
             <ArrowRight className="w-5 h-5 text-text-secondary" />
@@ -298,7 +298,7 @@ export function EntityDetailPage() {
             <Button
               variant="primary"
               icon={<ArrowRight className="w-4 h-4" />}
-              onClick={() => navigate('/admin/entities')}
+              onClick={() => navigate('/settings/entities')}
             >
               العودة للكيانات
             </Button>
@@ -322,7 +322,7 @@ export function EntityDetailPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/admin/entities')}
+            onClick={() => navigate('/settings/entities')}
             className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
           >
             <ArrowRight className="w-5 h-5 text-text-secondary" />

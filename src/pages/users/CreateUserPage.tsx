@@ -156,7 +156,7 @@ export function CreateUserPage() {
         entity_id: form.entity_id,
       });
 
-      navigate(`/admin/users/${userId}`, { replace: true });
+      navigate(`/settings/users/${userId}`, { replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'فشل إنشاء المستخدم';
       setServerError(msg);
@@ -187,7 +187,7 @@ export function CreateUserPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/admin/users')}
+           onClick={() => navigate('/settings/users')}
             className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
           >
             <ArrowRight className="w-5 h-5 text-text-secondary" />
@@ -402,7 +402,7 @@ export function CreateUserPage() {
 
       {/* Bottom Actions */}
       <div className="flex items-center justify-end gap-3 pt-2">
-        <Button variant="ghost" onClick={() => navigate('/admin/users')}>
+        <Button variant="ghost" onClick={() => navigate('/settings/users')}>
           إلغاء
         </Button>
         <Button

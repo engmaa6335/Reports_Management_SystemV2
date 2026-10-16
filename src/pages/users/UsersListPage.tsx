@@ -232,7 +232,7 @@ export function UsersListPage() {
         <Button
           variant="primary"
           icon={<Plus className="w-4 h-4" />}
-          onClick={() => navigate('/admin/users/new')}
+          onClick={() => navigate('/settings/users/new')}
           className="flex-shrink-0"
         >
           <span className="hidden sm:inline">إضافة مستخدم</span>
@@ -497,7 +497,7 @@ export function UsersListPage() {
                     >
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => navigate(`/admin/users/${user.id}`)}
+                         onClick={() => navigate(`/settings/users/${user.id}`)}
                           className="text-right"
                         >
                           <div className="font-medium text-text hover:text-primary">

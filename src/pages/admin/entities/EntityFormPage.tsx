@@ -251,7 +251,7 @@ export function EntityFormPage() {
           is_active: form.is_active,
         };
         await updateEntity(id, payload);
-        navigate(`/admin/entities/${id}`, { replace: true });
+        navigate(`/settings/entities/${id}`, { replace: true });
       } else {
         // ⭐ للإنشاء — استدعاء API مباشر لضمان الحصول على ID
         const payload: CreateEntityPayload = {
@@ -273,12 +273,12 @@ export function EntityFormPage() {
         if (!result || !result.id) {
           console.error('❌ Invalid result from createEntity:', result);
           alert('تم الإنشاء لكن حدث خطأ في المعرّف. العودة للقائمة.');
-          navigate('/admin/entities', { replace: true });
+          navigate('/settings/entities', { replace: true });
           return;
         }
 
         console.log('✅ Navigating to entity:', result.id);
-        navigate(`/admin/entities/${result.id}`, { replace: true });
+        navigate(`/settings/entities/${result.id}`, { replace: true });
       }
     } catch (err: any) {
       console.error('❌ Submit error:', {
@@ -355,7 +355,7 @@ export function EntityFormPage() {
           <button
             onClick={() =>
               navigate(
-                isEdit && id ? `/admin/entities/${id}` : '/admin/entities'
+                isEdit && id ? `/settings/entities/${id}` : '/settings/entities'
               )
             }
             className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
@@ -659,7 +659,7 @@ export function EntityFormPage() {
           variant="ghost"
           onClick={() =>
             navigate(
-              isEdit && id ? `/admin/entities/${id}` : '/admin/entities'
+              isEdit && id ? `/settings/entities/${id}` : '/settings/entities'
             )
           }
         >

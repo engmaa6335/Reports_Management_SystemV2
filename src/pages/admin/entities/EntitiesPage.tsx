@@ -265,13 +265,14 @@ export function EntitiesPage() {
     filters.regionId ||
     filters.parentId;
 
-  const handleViewDetails = (id: string) => {
-    navigate(`/admin/entities/${id}`);
-  };
+  
+      const handleViewDetails = (id: string) => {
+        navigate(`/settings/entities/${id}`);
+      };
 
-  const handleCreate = () => {
-    navigate('/admin/entities/new');
-  };
+      const handleCreate = () => {
+        navigate('/settings/entities/new');
+      };
 
   // ================================================
   // Render

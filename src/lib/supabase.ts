@@ -23,7 +23,10 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// ════════════════════════════════════════════════════════════
 // Helper للتأكد من الاتصال
+// ════════════════════════════════════════════════════════════
+
 export async function testConnection(): Promise<boolean> {
   try {
     const { error } = await supabase.from('roles').select('id').limit(1);
@@ -37,4 +40,15 @@ export async function testConnection(): Promise<boolean> {
     console.error('❌ Connection error:', err);
     return false;
   }
+}
+
+// ════════════════════════════════════════════════════════════
+// ⚠️ للتطوير فقط — يُعرّض supabase لـ DevTools Console
+// يُمكّن الاختبار السريع من Console (window.__supabase)
+// لا يعمل في بيئة الإنتاج (production build)
+// ════════════════════════════════════════════════════════════
+
+if (import.meta.env.DEV) {
+  (window as any).__supabase = supabase;
+  console.log('🔧 [DEV] window.__supabase جاهز للاستخدام في Console');
 }

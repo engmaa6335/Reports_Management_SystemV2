@@ -1,5 +1,11 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from 'react-router-dom';
 import { useAuthStore } from './stores/auth-store';
 import { useEntityStore } from './stores/entity-store';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
@@ -37,6 +43,28 @@ import { FieldFormPage } from './pages/admin/templates/FieldFormPage';
 // ⭐ Settings
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsPage } from './pages/settings/SettingsPage';
+
+// ⭐ Notifications Admin
+import { NotificationsAdminPage } from './pages/admin/notifications/NotificationsAdminPage';
+import { NotificationRulesPage } from './pages/admin/notifications/NotificationRulesPage';
+import { NotificationRuleFormPage } from './pages/admin/notifications/NotificationRuleFormPage';
+import { NotificationTemplatesPage } from './pages/admin/notifications/NotificationTemplatesPage';
+import { NotificationTemplateFormPage } from './pages/admin/notifications/NotificationTemplateFormPage';
+import { NotificationLogPage } from './pages/admin/notifications/NotificationLogPage';
+import { NotificationChannelsPage } from './pages/admin/notifications/NotificationChannelsPage';
+import { SendManualNotificationPage } from './pages/admin/notifications/SendManualNotificationPage';
+import { NotificationLogDetailPage } from './pages/admin/notifications/NotificationLogDetailPage';
+
+// ================================================
+// ⭐ AdminRedirect — يحافظ على المسار الفرعي
+// ================================================
+
+function AdminRedirect() {
+  const location = useLocation();
+  const subPath = location.pathname.replace(/^\/admin/, '');
+  const target = `/settings${subPath}${location.search}${location.hash}`;
+  return <Navigate to={target} replace />;
+}
 
 function App() {
   const { initialize, initialized, user } = useAuthStore();
@@ -116,20 +144,13 @@ function App() {
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<SettingsPage />} />
 
-            {/* ⭐ Templates — الترتيب حساس! */}
-            {/* 1. قائمة القوالب */}
+            {/* ⭐ Templates */}
             <Route path="templates" element={<TemplatesPage />} />
-
-            {/* 2. إضافة قالب */}
             <Route path="templates/new" element={<TemplateFormPage />} />
-
-            {/* 3. تعديل قالب */}
             <Route
               path="templates/:id/edit"
               element={<TemplateFormPage />}
             />
-
-            {/* 4. حقول القالب — قبل templates/:id */}
             <Route
               path="templates/:id/fields/new"
               element={<FieldFormPage />}
@@ -138,22 +159,47 @@ function App() {
               path="templates/:id/fields/:fieldId/edit"
               element={<FieldFormPage />}
             />
-
-            {/* 5. تفاصيل القالب — الأخير */}
             <Route
               path="templates/:id"
               element={<TemplateDetailPage />}
             />
 
-            {/* Notifications */}
-            <Route
-              path="notifications"
-              element={
-                <div className="bg-surface border border-border rounded-xl p-12 text-center text-text-muted">
-                  🔔 إدارة التنبيهات — قريباً
-                </div>
-              }
-            />
+            {/* ⭐⭐⭐ إدارة التنبيهات — وحدة كاملة */}
+            <Route path="notifications" element={<NotificationsAdminPage />}>
+              <Route index element={<Navigate to="rules" replace />} />
+
+              {/* القواعد — القائمة ثم النموذج */}
+              <Route path="rules" element={<NotificationRulesPage />} />
+              <Route path="rules/new" element={<NotificationRuleFormPage />} />
+              <Route
+                path="rules/:id/edit"
+                element={<NotificationRuleFormPage />}
+              />
+
+              {/* القوالب — القائمة ثم النموذج */}
+              <Route path="templates" element={<NotificationTemplatesPage />} />
+              <Route
+                path="templates/new"
+                element={<NotificationTemplateFormPage />}
+              />
+              <Route
+                path="templates/:id/edit"
+                element={<NotificationTemplateFormPage />}
+              />
+
+              {/* السجل */}
+             <Route path="log" element={<NotificationLogPage />} />
+              <Route path="log/:id" element={<NotificationLogDetailPage />} />
+
+              {/* القنوات */}
+              <Route path="channels" element={<NotificationChannelsPage />} />
+
+              {/* الإرسال المخصص */}
+              <Route
+                path="send-manual"
+                element={<SendManualNotificationPage />}
+              />
+            </Route>
 
             {/* ⭐ Users */}
             <Route path="users" element={<UsersListPage />} />
@@ -169,7 +215,7 @@ function App() {
             />
             <Route path="entities/:id" element={<EntityDetailPage />} />
 
-            {/* Roles, Themes */}
+            {/* Roles, Themes — قريبًا */}
             <Route
               path="roles"
               element={
@@ -189,24 +235,9 @@ function App() {
           </Route>
 
           {/* ⭐ Redirects من /admin/* → /settings/* */}
-          <Route
-            path="/admin/users/*"
-            element={<Navigate to="/settings/users" replace />}
-          />
-          <Route
-            path="/admin/entities/*"
-            element={<Navigate to="/settings/entities" replace />}
-          />
-          <Route
-            path="/admin/roles"
-            element={<Navigate to="/settings/roles" replace />}
-          />
-          <Route
-            path="/admin/themes"
-            element={<Navigate to="/settings/themes" replace />}
-          />
+          <Route path="/admin/*" element={<AdminRedirect />} />
 
-          {/* Notifications */}
+          {/* Notifications — صفحة المستخدم العادي */}
           <Route path="/notifications" element={<NotificationsPage />} />
         </Route>
 
