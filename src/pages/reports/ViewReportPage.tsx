@@ -277,7 +277,7 @@ export function ViewReportPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
-  const { activeEntity, restoreActiveEntity } = useEntityStore();
+  const { activeEntity, availableEntities, setActiveEntity } = useEntityStore();
   const {
     currentReport,
     revisions,
@@ -296,12 +296,12 @@ export function ViewReportPage() {
     {}
   );
 
-  // استرجاع activeEntity إذا فُقد
+  // ⭐ استرجاع activeEntity إذا فُقد (بديل restoreActiveEntity)
   useEffect(() => {
-    if (!activeEntity) {
-      restoreActiveEntity();
+    if (!activeEntity && availableEntities && availableEntities.length > 0) {
+      setActiveEntity(availableEntities[0]);
     }
-  }, [activeEntity, restoreActiveEntity]);
+  }, [activeEntity, availableEntities, setActiveEntity]);
 
   // تحميل التقرير
   useEffect(() => {
@@ -427,11 +427,10 @@ export function ViewReportPage() {
   }
 
   const badge = getStatusBadge(currentReport.status);
-  const category = (
-    currentReport.template as unknown as {
-      category?: { color?: string; name_ar?: string };
-    }
-  )?.category;
+  // ⭐ إصلاح: استخدام any للوصول إلى category
+  const category = (currentReport.template as any)?.category as
+    | { color?: string; name_ar?: string }
+    | undefined;
 
   const fieldLabels = Object.fromEntries(
     (currentReport.fields || []).map((f: ReportField) => [

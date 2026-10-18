@@ -18,14 +18,16 @@ import {
 import {
   bulkReassignFromExcel,
   rollbackBulkImport,
+  resolveEntityName,
   type BulkImportResult,
+  type EntitySuggestion,
 } from '../../lib/permissions-api';
 import {
   downloadExcelTemplate,
   parseExcelFile,
   type ParsedExcelRow,
 } from '../../lib/excel-template';
-import { supabase } from '../../lib/supabase'; // ⭐ تمت الإضافة
+import { supabase } from '../../lib/supabase';
 
 export function BulkImportPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -113,7 +115,6 @@ export function BulkImportPage() {
     }
   };
 
-  // ⭐ دالة استخراج عناصر التأكيد (مستقلة)
   const extractConfirmationItems = async (
     result: BulkImportResult
   ): Promise<ConfirmationItem[]> => {
@@ -134,36 +135,26 @@ export function BulkImportPage() {
       if (!rawValue) continue;
 
       try {
-        // 1. RPC resolve_entity_name
         const { data: rpcData, error: rpcError } = await supabase.rpc(
           'resolve_entity_name',
           { p_name: err.region }
         );
 
-        if (rpcError) {
-          console.error('❌ RPC error:', rpcError);
-          continue;
-        }
+        if (rpcError || !rpcData || rpcData.length === 0) continue;
 
-        if (!rpcData || rpcData.length === 0) continue;
-
-        // 2. جلب أسماء الكيانات
         const entityIds = rpcData.map((r: any) => r.entity_id);
         const { data: entitiesData, error: entitiesError } = await supabase
           .from('entities')
           .select('id, name_ar, name_en')
           .in('id', entityIds);
 
-        if (entitiesError) {
-          console.error('❌ Entities error:', entitiesError);
-          continue;
-        }
+        if (entitiesError) continue;
 
         const entityMap = new Map(
           (entitiesData || []).map((e: any) => [e.id, e])
         );
 
-        const suggestions = rpcData.map((r: any) => {
+        const suggestions: EntitySuggestion[] = rpcData.map((r: any) => {
           const e = entityMap.get(r.entity_id);
           return {
             entity_id: r.entity_id,
@@ -216,7 +207,7 @@ export function BulkImportPage() {
         if (items.length > 0) {
           setConfirmationItems(items);
           setShowConfirmation(true);
-          return; // لا تعرض النتيجة بعد
+          return;
         }
       }
 

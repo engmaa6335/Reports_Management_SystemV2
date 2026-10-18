@@ -34,3 +34,13 @@ git commit -m "fix: allow ReactNode for ConfirmDialog message"
 git push origin main
 =================================================================|
 
+https://reports-management-system-v2.vercel.app
+
+git add .
+git commit -m "fix: resolve all TypeScript build errors for Vercel"
+git push origin main
+
+
+
+
+

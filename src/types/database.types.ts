@@ -157,6 +157,10 @@ export interface FormTemplate {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+
+  // ⭐ الحقول المشتقة من joins (اختيارية)
+  category?: TemplateCategory | null;
+  entity_type?: EntityType | null;
 }
 
 export interface FormTemplateVersion {
