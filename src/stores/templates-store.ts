@@ -119,12 +119,14 @@ export const useTemplatesStore = create<TemplatesState>((set) => ({
         );
       }
 
-      // 2. جلب القوالب
+      // 2. جلب القوالب (مع entity_type للفلترة الدقيقة)
       let query = supabase
         .from('form_templates')
-        .select(
-          '*, category:template_categories ( id, code, name_ar, name_en, icon, color, order_index )'
-        )
+        .select(`
+          *,
+          category:template_categories ( id, code, name_ar, name_en, icon, color, order_index ),
+          entity_type:entity_types ( id, code, name_ar )
+        `) // ⭐ تمت إضافة entity_type
         .eq('is_active', true)
         .eq('report_kind', 'visit')
         .order('created_at', { ascending: true });
@@ -172,9 +174,11 @@ export const useTemplatesStore = create<TemplatesState>((set) => ({
 
       const { data: template, error: templateError } = await supabase
         .from('form_templates')
-        .select(
-          '*, category:template_categories ( id, code, name_ar, name_en, icon, color, order_index )'
-        )
+        .select(`
+          *,
+          category:template_categories ( id, code, name_ar, name_en, icon, color, order_index ),
+          entity_type:entity_types ( id, code, name_ar )
+        `) // ⭐ تمت إضافة entity_type
         .eq('id', templateId)
         .single();
 

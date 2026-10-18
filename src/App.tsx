@@ -55,8 +55,14 @@ import { NotificationChannelsPage } from './pages/admin/notifications/Notificati
 import { SendManualNotificationPage } from './pages/admin/notifications/SendManualNotificationPage';
 import { NotificationLogDetailPage } from './pages/admin/notifications/NotificationLogDetailPage';
 
+// ⭐⭐⭐ Permissions
+import { PermissionsDashboard } from './pages/permissions/PermissionsDashboard';
+import { BulkImportPage } from './pages/permissions/BulkImportPage';
+import { UserPermissionsPage } from './pages/permissions/UserPermissionsPage';
+import { RolesPage } from './pages/permissions/RolesPage'; // ← تم إضافة هذا
+
 // ================================================
-// ⭐ AdminRedirect — يحافظ على المسار الفرعي
+// ⭐ AdminRedirect
 // ================================================
 
 function AdminRedirect() {
@@ -120,110 +126,64 @@ function App() {
           {/* Reports */}
           <Route path="/reports" element={<ReportsListPage />} />
           <Route path="/reports/new" element={<CreateReportPage />} />
-          <Route
-            path="/reports/new/:templateId"
-            element={<CreateReportPage />}
-          />
+          <Route path="/reports/new/:templateId" element={<CreateReportPage />} />
           <Route path="/reports/:id" element={<ViewReportPage />} />
           <Route path="/reports/:id/edit" element={<EditReportPage />} />
 
           {/* Aggregates */}
           <Route path="/aggregates" element={<AggregatesListPage />} />
           <Route path="/aggregates/new" element={<CreateAggregatePage />} />
-          <Route
-            path="/aggregates/new/:templateId"
-            element={<CreateAggregatePage />}
-          />
+          <Route path="/aggregates/new/:templateId" element={<CreateAggregatePage />} />
           <Route path="/aggregates/:id" element={<ViewAggregatePage />} />
-          <Route
-            path="/aggregates/:id/edit"
-            element={<EditAggregatePage />}
-          />
+          <Route path="/aggregates/:id/edit" element={<EditAggregatePage />} />
 
-          {/* ⭐ Settings — كل الإدارة */}
+          {/* ⭐ Settings */}
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<SettingsPage />} />
 
-            {/* ⭐ Templates */}
+            {/* Templates */}
             <Route path="templates" element={<TemplatesPage />} />
             <Route path="templates/new" element={<TemplateFormPage />} />
-            <Route
-              path="templates/:id/edit"
-              element={<TemplateFormPage />}
-            />
-            <Route
-              path="templates/:id/fields/new"
-              element={<FieldFormPage />}
-            />
-            <Route
-              path="templates/:id/fields/:fieldId/edit"
-              element={<FieldFormPage />}
-            />
-            <Route
-              path="templates/:id"
-              element={<TemplateDetailPage />}
-            />
+            <Route path="templates/:id/edit" element={<TemplateFormPage />} />
+            <Route path="templates/:id/fields/new" element={<FieldFormPage />} />
+            <Route path="templates/:id/fields/:fieldId/edit" element={<FieldFormPage />} />
+            <Route path="templates/:id" element={<TemplateDetailPage />} />
 
-            {/* ⭐⭐⭐ إدارة التنبيهات — وحدة كاملة */}
+            {/* Notifications Admin */}
             <Route path="notifications" element={<NotificationsAdminPage />}>
               <Route index element={<Navigate to="rules" replace />} />
-
-              {/* القواعد — القائمة ثم النموذج */}
               <Route path="rules" element={<NotificationRulesPage />} />
               <Route path="rules/new" element={<NotificationRuleFormPage />} />
-              <Route
-                path="rules/:id/edit"
-                element={<NotificationRuleFormPage />}
-              />
-
-              {/* القوالب — القائمة ثم النموذج */}
+              <Route path="rules/:id/edit" element={<NotificationRuleFormPage />} />
               <Route path="templates" element={<NotificationTemplatesPage />} />
-              <Route
-                path="templates/new"
-                element={<NotificationTemplateFormPage />}
-              />
-              <Route
-                path="templates/:id/edit"
-                element={<NotificationTemplateFormPage />}
-              />
-
-              {/* السجل */}
-             <Route path="log" element={<NotificationLogPage />} />
+              <Route path="templates/new" element={<NotificationTemplateFormPage />} />
+              <Route path="templates/:id/edit" element={<NotificationTemplateFormPage />} />
+              <Route path="log" element={<NotificationLogPage />} />
               <Route path="log/:id" element={<NotificationLogDetailPage />} />
-
-              {/* القنوات */}
               <Route path="channels" element={<NotificationChannelsPage />} />
-
-              {/* الإرسال المخصص */}
-              <Route
-                path="send-manual"
-                element={<SendManualNotificationPage />}
-              />
+              <Route path="send-manual" element={<SendManualNotificationPage />} />
             </Route>
 
-            {/* ⭐ Users */}
+            {/* Users */}
             <Route path="users" element={<UsersListPage />} />
             <Route path="users/new" element={<CreateUserPage />} />
             <Route path="users/:id" element={<UserDetailPage />} />
 
-            {/* ⭐ Entities */}
+            {/* Entities */}
             <Route path="entities" element={<EntitiesPage />} />
             <Route path="entities/new" element={<EntityFormPage />} />
-            <Route
-              path="entities/:id/edit"
-              element={<EntityFormPage />}
-            />
+            <Route path="entities/:id/edit" element={<EntityFormPage />} />
             <Route path="entities/:id" element={<EntityDetailPage />} />
 
-            {/* Roles, Themes — قريبًا */}
-            <Route
-              path="roles"
-              element={
-                <div className="bg-surface border border-border rounded-xl p-12 text-center text-text-muted">
-                  🛡️ إدارة الأدوار — قريباً
-                </div>
-              }
-            />
+            {/* ⭐ Permissions */}
+            <Route path="permissions" element={<PermissionsDashboard />} />
+            <Route path="permissions/bulk-import" element={<BulkImportPage />} />
+            <Route path="permissions/users/:id" element={<UserPermissionsPage />} />
+            
+            {/* ⭐ Roles (جديد) */}
+            <Route path="roles" element={<RolesPage />} />
+
+            {/* Themes */}
             <Route
               path="themes"
               element={
@@ -234,10 +194,7 @@ function App() {
             />
           </Route>
 
-          {/* ⭐ Redirects من /admin/* → /settings/* */}
           <Route path="/admin/*" element={<AdminRedirect />} />
-
-          {/* Notifications — صفحة المستخدم العادي */}
           <Route path="/notifications" element={<NotificationsPage />} />
         </Route>
 

@@ -22,9 +22,12 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user, signOut } = useAuthStore();
-  const { activeEntity, entities } = useEntityStore();
+  const { activeEntity, availableEntities } = useEntityStore();
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  // ⭐ تأمين المتغيرات
+  const safeEntities = availableEntities ?? [];
 
   const handleSwitchEntity = () => {
     navigate('/select-entity');
@@ -57,15 +60,26 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
             </div>
             <div className="hidden sm:block">
               <div className="text-xs text-text-muted leading-none mb-0.5">
-                {activeEntity.roleName}
+                {activeEntity.roleCode || ''}
               </div>
-              <div className="text-sm font-medium text-text leading-none">
+              <div className="text-sm font-medium text-text leading-none flex items-center gap-2">
                 {activeEntity.entityName}
+                {activeEntity.regionMode && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                      activeEntity.regionMode === 'rl'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-green-100 text-green-700'
+                    }`}
+                  >
+                    {activeEntity.regionMode === 'rl' ? 'R.L' : 'TLS'}
+                  </span>
+                )}
               </div>
             </div>
 
             {/* Switch Entity */}
-            {entities.length > 1 && (
+            {safeEntities.length > 1 && (
               <button
                 onClick={handleSwitchEntity}
                 className="p-1.5 rounded-md hover:bg-surface text-text-secondary transition-colors"
@@ -80,7 +94,6 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
 
       {/* Left side — notifications + user menu */}
       <div className="flex items-center gap-2">
-        {/* 🔔 Notifications */}
         <NotificationBell />
 
         {/* User Menu */}
@@ -101,15 +114,12 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
           {/* Dropdown */}
           {userMenuOpen && (
             <>
-              {/* Backdrop */}
               <div
                 className="fixed inset-0 z-40"
                 onClick={() => setUserMenuOpen(false)}
               />
 
-              {/* Menu */}
               <div className="absolute top-full left-0 mt-2 w-56 bg-surface border border-border rounded-xl shadow-hard z-50 overflow-hidden">
-                {/* User Info */}
                 <div className="p-4 border-b border-border bg-bg-secondary">
                   <div className="text-sm font-semibold text-text truncate">
                     {user?.fullName}
@@ -122,7 +132,6 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                   </div>
                 </div>
 
-                {/* Menu Items */}
                 <div className="p-1.5">
                   <button
                     onClick={() => {
@@ -147,7 +156,6 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                   </button>
                 </div>
 
-                {/* Logout */}
                 <div className="p-1.5 border-t border-border">
                   <button
                     onClick={handleLogout}

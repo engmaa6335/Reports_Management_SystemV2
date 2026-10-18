@@ -1,10 +1,6 @@
 import { X, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { Button } from './index';
 
-// ================================================
-// Types
-// ================================================
-
 type ConfirmVariant = 'danger' | 'warning' | 'info' | 'success';
 
 interface ConfirmModalProps {
@@ -18,10 +14,6 @@ interface ConfirmModalProps {
   onConfirm: () => void;
   onCancel: () => void;
 }
-
-// ================================================
-// Variant Config
-// ================================================
 
 const VARIANTS: Record<
   ConfirmVariant,
@@ -58,10 +50,6 @@ const VARIANTS: Record<
   },
 };
 
-// ================================================
-// Component
-// ================================================
-
 export function ConfirmModal({
   open,
   title,
@@ -90,21 +78,18 @@ export function ConfirmModal({
         className="w-full max-w-md bg-surface rounded-2xl shadow-2xl border border-border overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex items-start gap-4 p-6 pb-4">
           <div
             className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${config.iconBg} ${config.iconColor}`}
           >
             {config.icon}
           </div>
-
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-bold text-text mb-1">{title}</h3>
             <div className="text-sm text-text-secondary leading-relaxed">
               {message}
             </div>
           </div>
-
           {!loading && (
             <button
               onClick={onCancel}
@@ -115,14 +100,8 @@ export function ConfirmModal({
             </button>
           )}
         </div>
-
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 bg-bg-secondary border-t border-border">
-          <Button
-            variant="ghost"
-            onClick={onCancel}
-            disabled={loading}
-          >
+          <Button variant="ghost" onClick={onCancel} disabled={loading}>
             {cancelText}
           </Button>
           <Button

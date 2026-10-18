@@ -13,12 +13,14 @@ export function DashboardPage() {
   const { user } = useAuthStore();
   const {
     activeEntity,
-    entities,
-    loading,
+    availableEntities,
     initialized,
     loadUserEntities,
     setActiveEntity,
   } = useEntityStore();
+
+  // ⭐ تأمين المتغيرات
+  const safeEntities = availableEntities ?? [];
 
   // 🔑 1. تحميل الكيانات
   useEffect(() => {
@@ -29,26 +31,26 @@ export function DashboardPage() {
 
   // 🔑 2. تحديد الكيان النشط أو التوجيه
   useEffect(() => {
-    if (!initialized || loading) return;
-    if (entities.length === 0) return;
+    if (!initialized) return;
+    if (safeEntities.length === 0) return;
 
-    if (entities.length === 1 && !activeEntity) {
-      setActiveEntity(entities[0]);
+    if (safeEntities.length === 1 && !activeEntity) {
+      setActiveEntity(safeEntities[0]);
       return;
     }
 
-    if (entities.length > 1 && !activeEntity) {
+    if (safeEntities.length > 1 && !activeEntity) {
       navigate('/select-entity', { replace: true });
     }
-  }, [initialized, loading, entities, activeEntity, setActiveEntity, navigate]);
+  }, [initialized, safeEntities, activeEntity, setActiveEntity, navigate]);
 
   // 🔑 3. شاشة التحميل
-  if (!initialized || loading) {
+  if (!initialized) {
     return <Loading message="جاري تحميل البيانات..." />;
   }
 
   // 🔑 4. لا كيانات
-  if (entities.length === 0) {
+  if (safeEntities.length === 0) {
     return (
       <Card padding="lg" className="max-w-md mx-auto text-center">
         <div className="text-6xl mb-4">⚠️</div>
@@ -78,10 +80,21 @@ export function DashboardPage() {
           </h1>
           <p className="text-text-secondary mt-1">
             أنت الآن في: <strong>{activeEntity.entityName}</strong>
+            {activeEntity.regionMode && (
+              <span
+                className={`mr-2 text-xs px-2 py-1 rounded font-bold ${
+                  activeEntity.regionMode === 'rl'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-green-100 text-green-700'
+                }`}
+              >
+                {activeEntity.regionMode === 'rl' ? 'R.L' : 'TLS'}
+              </span>
+            )}
           </p>
         </div>
 
-        {entities.length > 1 && (
+        {safeEntities.length > 1 && (
           <Button
             variant="secondary"
             icon={<RefreshCw className="w-4 h-4" />}
@@ -105,7 +118,7 @@ export function DashboardPage() {
             Topbar و Sidebar يعملان بشكل صحيح
           </p>
           <p className="text-text-muted text-sm mt-2">
-            الدور الحالي: <strong>{activeEntity.roleName}</strong>
+            الدور الحالي: <strong>{activeEntity.roleCode}</strong>
           </p>
         </div>
       </Card>

@@ -72,14 +72,12 @@ export async function listUsers(filters: UsersFilters): Promise<UserWithRoles[]>
     `)
     .order('full_name');
 
-  // Search
   if (filters.search) {
     query = query.or(
       `full_name.ilike.%${filters.search}%,email.ilike.%${filters.search}%,username.ilike.%${filters.search}%`
     );
   }
 
-  // Active filter
   if (filters.isActive !== null) {
     query = query.eq('is_active', filters.isActive);
   }
@@ -87,7 +85,6 @@ export async function listUsers(filters: UsersFilters): Promise<UserWithRoles[]>
   const { data, error } = await query;
   if (error) throw error;
 
-  // Transform + client-side filter by role/region
   let users = (data || []).map((row: any) => {
     const roles = (row.user_entity_roles || [])
       .filter((uer: any) => !uer.ended_at)
@@ -111,7 +108,6 @@ export async function listUsers(filters: UsersFilters): Promise<UserWithRoles[]>
     } as UserWithRoles;
   });
 
-  // Filter by role
   if (filters.roleCode) {
     users = users.filter((u) =>
       u.roles.some((r) => r.role_code === filters.roleCode)
@@ -260,8 +256,7 @@ export async function listEntities(): Promise<Entity[]> {
     .from('entities')
     .select(`
       id, code, name_ar, name_en, entity_type_id, parent_id, region_id, is_active,
-      entity_types ( code, name_ar ),
-      regions ( name_ar )
+      entity_types ( code, name_ar )
     `)
     .eq('is_active', true)
     .order('name_ar');
@@ -278,7 +273,7 @@ export async function listEntities(): Promise<Entity[]> {
     entity_type_name: e.entity_types?.name_ar || null,
     parent_id: e.parent_id,
     region_id: e.region_id,
-    region_name: e.regions?.name_ar || null,
+    region_name: null,
     is_active: e.is_active,
   }));
 }
@@ -290,15 +285,23 @@ export async function listEntities(): Promise<Entity[]> {
 export async function listEntitiesByType(
   entityTypeCode: string
 ): Promise<Entity[]> {
+  const { data: typeData, error: typeError } = await supabase
+    .from('entity_types')
+    .select('id')
+    .eq('code', entityTypeCode)
+    .maybeSingle();
+
+  if (typeError) throw typeError;
+  if (!typeData) return [];
+
   const { data, error } = await supabase
     .from('entities')
     .select(`
       id, code, name_ar, name_en, entity_type_id, parent_id, region_id, is_active,
-      entity_types ( code, name_ar ),
-      regions ( name_ar )
+      entity_types ( code, name_ar )
     `)
     .eq('is_active', true)
-    .eq('entity_types.code', entityTypeCode)
+    .eq('entity_type_id', typeData.id)
     .order('name_ar');
 
   if (error) throw error;
@@ -313,7 +316,7 @@ export async function listEntitiesByType(
     entity_type_name: e.entity_types?.name_ar || null,
     parent_id: e.parent_id,
     region_id: e.region_id,
-    region_name: e.regions?.name_ar || null,
+    region_name: null,
     is_active: e.is_active,
   }));
 }

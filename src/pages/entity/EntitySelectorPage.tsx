@@ -1,197 +1,165 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Building2, Check, MapPin, School, Home } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Building2, MapPin, Target, BookOpen, Landmark, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store';
-import { useEntityStore, type UserEntity } from '../../stores/entity-store';
+import { useEntityStore } from '../../stores/entity-store';
 import { Button, Card } from '../../components/ui';
-
-// ═══════════════════════════════════════════════════════════
-// ⭐ أنواع الكيانات الإدارية العليا (لا تظهر للمستخدم)
-// ═══════════════════════════════════════════════════════════
-
-const HIDDEN_ENTITY_TYPES = ['edu_unit', 'edc', 'qa_unit'];
-
-// ═══════════════════════════════════════════════════════════
-// Icons
-// ═══════════════════════════════════════════════════════════
-
-const entityIcons: Record<string, React.ReactNode> = {
-  region: <MapPin className="w-8 h-8" />,
-  school: <Building2 className="w-8 h-8" />,
-  tls_center: <Building2 className="w-8 h-8" />,
-  qa_unit: <Target className="w-8 h-8" />,
-  edu_unit: <BookOpen className="w-8 h-8" />,
-  edc: <Landmark className="w-8 h-8" />,
-};
-
-const entityColors: Record<string, string> = {
-  region: 'bg-info/10 text-info',
-  school: 'bg-primary/10 text-primary',
-  tls_center: 'bg-secondary/10 text-secondary',
-  qa_unit: 'bg-warning/10 text-warning',
-  edu_unit: 'bg-success/10 text-success',
-  edc: 'bg-primary/10 text-primary',
-};
+import { Loading } from '../../components/ui/Loading';
 
 export function EntitySelectorPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const {
-    entities: allEntities,
-    loading,
+    activeEntity,
+    availableEntities,
     initialized,
     loadUserEntities,
     setActiveEntity,
   } = useEntityStore();
 
-  // ⭐ فلترة الكيانات الإدارية
-  const entities = allEntities.filter(
-    (e) => !HIDDEN_ENTITY_TYPES.includes(e.entityTypeCode || '')
-  );
+  // ⭐ تأمين المتغيرات
+  const safeEntities = availableEntities ?? [];
 
-  // ═══════════════════════════════════════════
-  // Load entities
-  // ═══════════════════════════════════════════
-
+  // 1. تحميل الكيانات
   useEffect(() => {
     if (user && !initialized) {
       loadUserEntities(user.id);
     }
   }, [user, initialized, loadUserEntities]);
 
-  // ═══════════════════════════════════════════
-  // Auto-select if only one visible entity
-  // ═══════════════════════════════════════════
-
+  // 2. التوجيه التلقائي
   useEffect(() => {
-    if (initialized && entities.length === 1) {
-      setActiveEntity(entities[0]);
+    if (initialized && safeEntities.length === 0) {
       navigate('/dashboard', { replace: true });
     }
-  }, [initialized, entities, setActiveEntity, navigate]);
+  }, [initialized, safeEntities.length, navigate]);
 
-  // ═══════════════════════════════════════════
-  // Empty state
-  // ═══════════════════════════════════════════
+  const handleSelect = (entity: (typeof safeEntities)[0]) => {
+    setActiveEntity(entity);
+    navigate('/dashboard', { replace: true });
+  };
 
-  if (initialized && entities.length === 0) {
+  if (!initialized) {
+    return <Loading message="جاري تحميل الكيانات..." />;
+  }
+
+  if (safeEntities.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-secondary p-4">
-        <Card padding="lg" className="max-w-md text-center">
-          <div className="text-6xl mb-4">🚫</div>
+      <div className="min-h-screen bg-bg flex items-center justify-center p-4">
+        <Card padding="lg" className="max-w-md w-full text-center">
+          <div className="text-6xl mb-4">⚠️</div>
           <h1 className="text-xl font-bold text-text mb-2">
-            {t('entity.no_entities')}
+            لا توجد كيانات مرتبطة بحسابك
           </h1>
           <p className="text-text-secondary mb-6">
-            {t('entity.contact_support')}
+            تواصل مع الدعم الفني لإسناد كيان لك
           </p>
-          <Button onClick={() => useAuthStore.getState().signOut()} fullWidth>
-            {t('auth.logout')}
+          <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+            العودة للوحة التحكم
           </Button>
         </Card>
       </div>
     );
   }
 
-  const handleSelect = (entity: UserEntity) => {
-    setActiveEntity(entity);
-    navigate('/dashboard');
-  };
-
-  // ═══════════════════════════════════════════
-  // Render
-  // ═══════════════════════════════════════════
-
   return (
-    <div className="min-h-screen bg-bg-secondary p-6">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-bg flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl space-y-6">
         {/* Header */}
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-text mb-3">
-            مرحباً {user?.fullName} 👋
+        <div className="text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-light rounded-full mb-4">
+            <Building2 className="w-8 h-8 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold text-text">
+            {t('entity.select_entity')}
           </h1>
-          <p className="text-text-secondary text-lg">
-            {t('entity.select_entity_desc')}
-          </p>
-          <p className="text-text-muted text-sm mt-2">
-            لديك {entities.length} كيان متاح للدخول
+          <p className="text-text-secondary mt-2">
+            اختر الكيان الذي تريد العمل عليه
           </p>
         </div>
 
-        {/* Loading */}
-        {loading && (
-          <div className="text-center py-12">
-            <div className="inline-block w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-text-secondary mt-4">جاري تحميل الكيانات...</p>
-          </div>
-        )}
+        {/* Entity List */}
+        <Card padding="md">
+          <div className="space-y-2">
+            {safeEntities.map((entity) => {
+              const isActive = entity.assignmentId === activeEntity?.assignmentId;
 
-        {/* Grid of Entities */}
-        {!loading && entities.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {entities.map((entity) => (
-              <button
-                key={entity.id}
-                onClick={() => handleSelect(entity)}
-                className="group text-right transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 rounded-xl"
-              >
-                <Card
-                  padding="lg"
-                  className="h-full hover:shadow-hard transition-shadow cursor-pointer"
+              return (
+                <button
+                  key={entity.assignmentId}
+                  onClick={() => handleSelect(entity)}
+                  className={`
+                    w-full flex items-center gap-4 p-4 rounded-lg
+                    border transition-all text-right
+                    ${
+                      isActive
+                        ? 'bg-primary/5 border-primary/30 ring-2 ring-primary/20'
+                        : 'bg-surface border-border hover:border-primary/50 hover:bg-bg-secondary'
+                    }
+                  `}
                 >
                   {/* Icon */}
                   <div
                     className={`
-                      inline-flex items-center justify-center w-16 h-16 rounded-xl mb-4
-                      ${entityColors[entity.entityTypeCode] || 'bg-primary/10 text-primary'}
+                      flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center
+                      ${
+                        isActive
+                          ? 'bg-primary text-white'
+                          : 'bg-primary/10 text-primary'
+                      }
                     `}
                   >
-                    {entityIcons[entity.entityTypeCode] || (
-                      <Building2 className="w-8 h-8" />
+                    {entity.entityTypeCode === 'region' ? (
+                      <MapPin className="w-6 h-6" />
+                    ) : entity.entityTypeCode === 'school' ? (
+                      <School className="w-6 h-6" />
+                    ) : entity.entityTypeCode === 'tls_center' ? (
+                      <Building2 className="w-6 h-6" />
+                    ) : (
+                      <Home className="w-6 h-6" />
                     )}
                   </div>
 
-                  {/* Type */}
-                  <div className="text-xs font-medium text-text-muted uppercase tracking-wide mb-1">
-                    {entity.entityTypeName}
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-text flex items-center gap-2">
+                      {entity.entityName}
+                      {entity.regionMode && (
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                            entity.regionMode === 'rl'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}
+                        >
+                          {entity.regionMode === 'rl' ? 'R.L' : 'TLS'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-sm text-text-secondary mt-0.5">
+                      {entity.roleCode}
+                    </div>
                   </div>
 
-                  {/* Name */}
-                  <h3 className="text-lg font-bold text-text mb-2">
-                    {entity.entityName}
-                  </h3>
-
-                  {/* Role */}
-                  <div className="flex items-center gap-2 text-sm text-text-secondary mb-4">
-                    <span className="inline-block w-2 h-2 rounded-full bg-success" />
-                    {entity.roleName}
-                  </div>
-
-                  {/* Enter Button */}
-                  <div className="flex items-center justify-end gap-2 text-primary font-medium text-sm group-hover:gap-3 transition-all">
-                    <span>{t('entity.enter')}</span>
-                    <ArrowLeft className="w-4 h-4" />
-                  </div>
-                </Card>
-              </button>
-            ))}
+                  {/* Check */}
+                  {isActive && (
+                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center">
+                      <Check className="w-4 h-4" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
-        )}
+        </Card>
 
-        {/* Logout */}
-        <div className="text-center mt-10">
-          <Button
-            variant="ghost"
-            onClick={() => useAuthStore.getState().signOut()}
-          >
-            {t('auth.logout')}
-          </Button>
+        {/* Footer */}
+        <div className="text-center text-xs text-text-muted">
+          مسجل الدخول باسم: {user?.fullName}
         </div>
       </div>
     </div>
   );
 }
-
-export default EntitySelectorPage;

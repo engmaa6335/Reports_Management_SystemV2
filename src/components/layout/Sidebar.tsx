@@ -13,6 +13,8 @@ import {
   LayoutTemplate,
   ChevronLeft,
   X,
+  Upload,
+  Grid, // أيقونة جديدة للمصفوفة
 } from 'lucide-react';
 import { useEntityStore } from '../../stores/entity-store';
 import type { RoleCode } from '../../types/app.types';
@@ -35,6 +37,7 @@ interface SettingsSubItem {
   label: string;
   icon: React.ReactNode;
   path: string;
+  badge?: string;
 }
 
 interface SidebarProps {
@@ -106,10 +109,23 @@ const SETTINGS_SUB_ITEMS: SettingsSubItem[] = [
     path: '/settings/entities',
   },
   {
-    id: 'roles',
-    label: 'إدارة الأدوار',
+    id: 'permissions',
+    label: 'الأدوار والصلاحيات',
     icon: <Shield className="w-4 h-4" />,
+    path: '/settings/permissions',
+  },
+  {
+    id: 'roles-matrix',
+    label: 'مصفوفة الصلاحيات',
+    icon: <Grid className="w-4 h-4" />,
     path: '/settings/roles',
+  },
+  {
+    id: 'bulk-import',
+    label: 'استيراد جماعي',
+    icon: <Upload className="w-4 h-4" />,
+    path: '/settings/permissions/bulk-import',
+    badge: 'Excel',
   },
   {
     id: 'themes',
@@ -129,12 +145,9 @@ export function Sidebar({ open }: SidebarProps) {
   const navigate = useNavigate();
   const userRole = activeEntity?.roleCode;
 
-  // ⭐ Popup State
   const [settingsPopupOpen, setSettingsPopupOpen] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
-
-  // ⭐ هل الشاشة موبايل؟
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -144,18 +157,15 @@ export function Sidebar({ open }: SidebarProps) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // ⭐ فلترة العناصر حسب الدور
   const visibleItems = MENU_ITEMS.filter((item) => {
     if (!item.roles || item.roles.length === 0) return true;
     return userRole && item.roles.includes(userRole);
   });
 
-  // ⭐ إغلاق Popup عند تغيير الصفحة
   useEffect(() => {
     setSettingsPopupOpen(false);
   }, [location.pathname]);
 
-  // ⭐ إغلاق Popup عند الضغط خارج
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -186,10 +196,6 @@ export function Sidebar({ open }: SidebarProps) {
     };
   }, [settingsPopupOpen]);
 
-  // ═══════════════════════════════════════════
-  // Handlers
-  // ═══════════════════════════════════════════
-
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.preventDefault();
     setSettingsPopupOpen((prev) => !prev);
@@ -200,19 +206,12 @@ export function Sidebar({ open }: SidebarProps) {
     setSettingsPopupOpen(false);
   };
 
-  // ═══════════════════════════════════════════
-  // Render
-  // ═══════════════════════════════════════════
-
   return (
     <>
-      {/* ⭐ Mobile Overlay — يظهر عند فتح Sidebar على الموبايل */}
       {isMobile && open && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20"
-          onClick={() => {
-            /* لا نُغلق — سيُغلق من MainLayout */
-          }}
+          onClick={() => {}}
         />
       )}
 
@@ -226,7 +225,6 @@ export function Sidebar({ open }: SidebarProps) {
       >
         <nav className="p-3 space-y-1 overflow-y-auto h-full pb-20">
           {visibleItems.map((item) => {
-            // ⭐ حالة خاصة للإعدادات
             if (item.isSettings) {
               const isActive = location.pathname.startsWith('/settings');
 
@@ -258,7 +256,6 @@ export function Sidebar({ open }: SidebarProps) {
               );
             }
 
-            // ⭐ العناصر العادية
             return (
               <NavLink
                 key={item.id}
@@ -283,16 +280,12 @@ export function Sidebar({ open }: SidebarProps) {
           })}
         </nav>
 
-        {/* Footer */}
         <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-border bg-bg-secondary">
           <div className="text-xs text-text-muted text-center">
             © 2026 EDC Platform
           </div>
         </div>
 
-        {/* ═══════════════════════════════════════════════════════ */}
-        {/* ⭐ Desktop Popup — ينزلق بجانب Sidebar */}
-        {/* ═══════════════════════════════════════════════════════ */}
         {!isMobile && (
           <div
             ref={popupRef}
@@ -308,7 +301,6 @@ export function Sidebar({ open }: SidebarProps) {
               }
             `}
           >
-            {/* Header */}
             <div className="px-4 py-3 border-b border-border bg-primary/5">
               <div className="flex items-center gap-2">
                 <Settings className="w-4 h-4 text-primary" />
@@ -318,7 +310,6 @@ export function Sidebar({ open }: SidebarProps) {
               </div>
             </div>
 
-            {/* Items */}
             <div className="py-2">
               {SETTINGS_SUB_ITEMS.map((subItem) => {
                 const isActive =
@@ -340,7 +331,14 @@ export function Sidebar({ open }: SidebarProps) {
                     `}
                   >
                     <span className="flex-shrink-0">{subItem.icon}</span>
-                    <span className="truncate">{subItem.label}</span>
+                    <span className="flex-1 truncate text-right">
+                      {subItem.label}
+                    </span>
+                    {subItem.badge && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-medium flex-shrink-0">
+                        {subItem.badge}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -349,9 +347,6 @@ export function Sidebar({ open }: SidebarProps) {
         )}
       </aside>
 
-      {/* ═══════════════════════════════════════════════════════ */}
-      {/* ⭐ Mobile Popup — Bottom Sheet */}
-      {/* ═══════════════════════════════════════════════════════ */}
       {isMobile && settingsPopupOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
@@ -362,12 +357,10 @@ export function Sidebar({ open }: SidebarProps) {
             onClick={(e) => e.stopPropagation()}
             style={{ animation: 'slideUp 0.2s ease-out' }}
           >
-            {/* Handle */}
             <div className="flex justify-center pt-3 pb-2">
               <div className="w-12 h-1 rounded-full bg-border" />
             </div>
 
-            {/* Header */}
             <div className="px-4 pb-3 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Settings className="w-5 h-5 text-primary" />
@@ -383,7 +376,6 @@ export function Sidebar({ open }: SidebarProps) {
               </button>
             </div>
 
-            {/* Items */}
             <div className="p-2">
               {SETTINGS_SUB_ITEMS.map((subItem) => {
                 const isActive =
@@ -405,7 +397,14 @@ export function Sidebar({ open }: SidebarProps) {
                     `}
                   >
                     <span className="flex-shrink-0">{subItem.icon}</span>
-                    <span className="truncate">{subItem.label}</span>
+                    <span className="flex-1 truncate text-right">
+                      {subItem.label}
+                    </span>
+                    {subItem.badge && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-medium">
+                        {subItem.badge}
+                      </span>
+                    )}
                   </button>
                 );
               })}

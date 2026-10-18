@@ -12,6 +12,7 @@ import {
   Edit2,
   Save,
   Activity,
+  Key,
 } from 'lucide-react';
 import { useUsersStore } from '../../stores/users-store';
 import { listEntitiesByType } from '../../lib/users-api';
@@ -62,7 +63,8 @@ export function UserDetailPage() {
     clearError,
   } = useUsersStore();
 
-  const [activeTab, setActiveTab] = useState<'info' | 'roles' | 'activity'>(
+  // ⭐ أضفنا تبويب 'permissions'
+  const [activeTab, setActiveTab] = useState<'info' | 'roles' | 'permissions' | 'activity'>(
     'info'
   );
 
@@ -231,10 +233,15 @@ export function UserDetailPage() {
         phone: editForm.phone.trim() || null,
       });
       setShowEditModal(false);
-      // Refresh activity
       loadActivity(user.id);
     } catch {
-      alert('فشل التحديث');
+      showConfirm({
+        title: 'خطأ',
+        message: 'فشل التحديث',
+        confirmText: 'حسناً',
+        variant: 'danger',
+        onConfirm: () => {},
+      });
     }
   };
 
@@ -275,10 +282,15 @@ export function UserDetailPage() {
       setNewEntityId('');
       setNewIsPrimary(false);
       setAvailableEntities([]);
-      // Refresh activity
       loadActivity(user.id);
     } catch {
-      alert('فشل إضافة الدور');
+      showConfirm({
+        title: 'خطأ',
+        message: 'فشل إضافة الدور',
+        confirmText: 'حسناً',
+        variant: 'danger',
+        onConfirm: () => {},
+      });
     }
   };
 
@@ -306,7 +318,7 @@ export function UserDetailPage() {
           <h3 className="text-lg font-bold text-text mb-2">
             المستخدم غير موجود
           </h3>
-          <Button variant="ghost" onClick={() => navigate('/admin/users')}>
+          <Button variant="ghost" onClick={() => navigate('/settings/users')}>
             العودة للمستخدمين
           </Button>
         </div>
@@ -327,7 +339,7 @@ export function UserDetailPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/admin/users')}
+            onClick={() => navigate('/settings/users')}
             className="p-2 rounded-lg hover:bg-bg-secondary transition-colors"
           >
             <ArrowRight className="w-5 h-5 text-text-secondary" />
@@ -341,13 +353,25 @@ export function UserDetailPage() {
           </div>
         </div>
 
-        <Button
-          variant={user.is_active ? 'ghost' : 'primary'}
-          onClick={handleToggleActive}
-          disabled={saving}
-        >
-          {user.is_active ? 'تعطيل' : 'تفعيل'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            icon={<Key className="w-4 h-4" />}
+            onClick={() =>
+              navigate(`/settings/permissions/users/${user.id}`)
+            }
+          >
+            الصلاحيات
+          </Button>
+
+          <Button
+            variant={user.is_active ? 'ghost' : 'primary'}
+            onClick={handleToggleActive}
+            disabled={saving}
+          >
+            {user.is_active ? 'تعطيل' : 'تفعيل'}
+          </Button>
+        </div>
       </div>
 
       {/* Error */}
@@ -367,10 +391,15 @@ export function UserDetailPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-border">
+      <div className="flex items-center gap-2 border-b border-border overflow-x-auto">
         {[
           { id: 'info', label: 'معلومات', icon: <UserIcon className="w-4 h-4" /> },
           { id: 'roles', label: 'الأدوار', icon: <Shield className="w-4 h-4" /> },
+          {
+            id: 'permissions',
+            label: 'الصلاحيات الفردية',
+            icon: <Key className="w-4 h-4" />,
+          },
           {
             id: 'activity',
             label: 'النشاط',
@@ -380,7 +409,7 @@ export function UserDetailPage() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as typeof activeTab)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-primary text-primary'
                 : 'border-transparent text-text-secondary hover:text-text'
@@ -530,6 +559,30 @@ export function UserDetailPage() {
         </Card>
       )}
 
+      {/* Tab: Permissions */}
+      {activeTab === 'permissions' && (
+        <Card padding="lg" className="text-center">
+          <Key className="w-12 h-12 text-primary mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-text mb-2">
+            الصلاحيات الفردية (Overrides)
+          </h3>
+          <p className="text-text-secondary text-sm mb-6 max-w-md mx-auto">
+            لإدارة الصلاحيات الفردية لهذا المستخدم (إضافة allow/deny،
+            تحديد النطاق، توثيق الموافقة الخارجية)، انتقل إلى صفحة الصلاحيات
+            المخصصة.
+          </p>
+          <Button
+            variant="primary"
+            icon={<Key className="w-4 h-4" />}
+            onClick={() =>
+              navigate(`/settings/permissions/users/${user.id}`)
+            }
+          >
+            إدارة الصلاحيات
+          </Button>
+        </Card>
+      )}
+
       {/* Tab: Activity */}
       {activeTab === 'activity' && (
         <Card padding="lg">
@@ -579,9 +632,7 @@ export function UserDetailPage() {
         </Card>
       )}
 
-      {/* ═══════════════════════════════════════════════ */}
       {/* Edit Profile Modal */}
-      {/* ═══════════════════════════════════════════════ */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[90] p-4">
           <Card padding="lg" className="w-full max-w-md">
@@ -662,9 +713,7 @@ export function UserDetailPage() {
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════ */}
       {/* Add Role Modal */}
-      {/* ═══════════════════════════════════════════════ */}
       {showAddRole && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[90] p-4">
           <Card padding="lg" className="w-full max-w-md">
@@ -760,9 +809,7 @@ export function UserDetailPage() {
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════ */}
       {/* Confirm Modal */}
-      {/* ═══════════════════════════════════════════════ */}
       <ConfirmModal
         open={confirmState.open}
         title={confirmState.title}

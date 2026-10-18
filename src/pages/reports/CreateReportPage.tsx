@@ -48,20 +48,6 @@ function computeAutoValue(
   }
 }
 
-function isTlsTemplate(template: any): boolean {
-  if (!template) return false;
-  const code = String(template.code || '').toLowerCase();
-  const catCode = String(template.category?.code || '').toLowerCase();
-  return code.includes('tls') || catCode.includes('tls');
-}
-
-function isRlTemplate(template: any): boolean {
-  if (!template) return false;
-  const code = String(template.code || '').toLowerCase();
-  const catCode = String(template.category?.code || '').toLowerCase();
-  return code.includes('rl') || catCode === 'rl';
-}
-
 function isFullWidthField(field: any): boolean {
   if (['indicator_group', 'textarea'].includes(field.field_type)) {
     return true;
@@ -145,15 +131,8 @@ export function CreateReportPage() {
   const [hasSchools, setHasSchools] = useState<boolean | null>(null);
   const [checkingEntities, setCheckingEntities] = useState(false);
 
-  // ⭐ حالة تحميل مدير المركز
   const [loadingManager, setLoadingManager] = useState(false);
-
-  // ⭐ مرجع لتتبع المركز السابق
   const prevCenterIdRef = useRef<string>('');
-
-  // ================================================
-  // Effects
-  // ================================================
 
   useEffect(() => {
     if (activeEntity?.roleCode) {
@@ -236,7 +215,7 @@ export function CreateReportPage() {
     }
   }, [selectedTemplate, step]);
 
-  // ⭐ الحقول التلقائية — user/entity/date
+  // ⭐ الحقول التلقائية
   useEffect(() => {
     if (!selectedTemplate || fields.length === 0 || !user || !activeEntity) {
       return;
@@ -255,9 +234,7 @@ export function CreateReportPage() {
       if (field.field_type === 'auto_filled') {
         const opts = (field.options as any) || {};
         const autoSource = opts.auto_source;
-
         if (autoSource === 'selected_entity.manager_name') return;
-
         if (formData[field.field_key] === undefined) {
           autoValues[field.field_key] = computeAutoValue(autoSource, context);
         }
@@ -270,7 +247,7 @@ export function CreateReportPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTemplate, fields, user, activeEntity]);
 
-  // ⭐⭐⭐ الحقول التلقائية — manager_name (مع إعادة الجلب عند التغيير)
+  // ⭐ manager_name
   useEffect(() => {
     if (!selectedTemplate || fields.length === 0) return;
 
@@ -290,14 +267,9 @@ export function CreateReportPage() {
     if (!centerSelectField) return;
 
     const centerId = formData[centerSelectField.field_key] as string;
-
-    // ⭐ إذا لم يتغير المركز → لا تفعل شيئاً
     if (centerId === prevCenterIdRef.current) return;
-
-    // ⭐ حدّث المرجع
     prevCenterIdRef.current = centerId || '';
 
-    // ⭐ إذا فارغ → امسح الحقول
     if (!centerId) {
       setFormData((prev) => {
         const next = { ...prev };
@@ -310,10 +282,8 @@ export function CreateReportPage() {
       return;
     }
 
-    // ⭐ اجلب دائماً عند تغيير المركز
     const fetchSelectedEntity = async () => {
       setLoadingManager(true);
-
       try {
         const { data, error } = await supabase
           .from('entities')
@@ -358,10 +328,6 @@ export function CreateReportPage() {
     selectedTemplate?.id,
   ]);
 
-  // ================================================
-  // Ordered Fields
-  // ================================================
-
   const orderedFields = useMemo(() => {
     return [...fields].sort(
       (a, b) => (a.order_index || 0) - (b.order_index || 0)
@@ -371,6 +337,30 @@ export function CreateReportPage() {
   const sections = useMemo(() => {
     return extractSections(orderedFields);
   }, [orderedFields]);
+
+  // ⭐ فلترة القوالب بناءً على regionMode
+  const visibleTemplates = useMemo(() => {
+    const regionMode = activeEntity?.regionMode;
+
+    return templates.filter((template) => {
+      const catCode = String(template.category?.code || '').toLowerCase();
+      const templateCode = String(template.code || '').toLowerCase();
+
+      const isRlTemplate = catCode === 'rl' || templateCode.includes('.rl') || templateCode.startsWith('rl_');
+      const isTlsTemplate = catCode === 'tls' || templateCode.includes('.tls') || templateCode.startsWith('tls_');
+
+      // إذا لم يكن regionMode محدداً (مدراء، إلخ) → اعرض كل القوالب
+      if (!regionMode) return true;
+
+      // R.L فقط
+      if (regionMode === 'rl') return isRlTemplate || (!isRlTemplate && !isTlsTemplate);
+      
+      // TLS فقط
+      if (regionMode === 'tls') return isTlsTemplate || (!isRlTemplate && !isTlsTemplate);
+
+      return true;
+    });
+  }, [templates, activeEntity?.regionMode]);
 
   // ================================================
   // Handlers
@@ -453,12 +443,6 @@ export function CreateReportPage() {
     prevCenterIdRef.current = '';
     navigate('/reports/new');
   };
-
-  const visibleTemplates = templates.filter((template) => {
-    if (isTlsTemplate(template)) return hasTlsCenters !== false;
-    if (isRlTemplate(template)) return hasSchools !== false;
-    return true;
-  });
 
   // ================================================
   // Render — Loading
@@ -585,7 +569,6 @@ export function CreateReportPage() {
   const renderField = (field: any) => {
     const fullWidth = isFullWidthField(field);
 
-    // ⭐ مؤشر تحميل لـ manager_name
     const isManagerField =
       field.field_type === 'auto_filled' &&
       (field.options as any)?.auto_source === 'selected_entity.manager_name';
@@ -657,9 +640,17 @@ export function CreateReportPage() {
             <span className="font-semibold text-primary">
               {activeEntity.entityName}
             </span>
-            <span className="text-text-muted text-xs">
-              (يمكن تغييرها من القائمة العلوية)
-            </span>
+            {activeEntity.regionMode && (
+              <span
+                className={`text-xs px-2 py-1 rounded-md font-bold ${
+                  activeEntity.regionMode === 'rl'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-green-100 text-green-700'
+                }`}
+              >
+                {activeEntity.regionMode === 'rl' ? 'R.L' : 'TLS'}
+              </span>
+            )}
           </div>
         </Card>
       )}
