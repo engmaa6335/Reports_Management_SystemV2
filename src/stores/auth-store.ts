@@ -21,13 +21,12 @@ interface AuthState {
   error: string | null;
 
   initialize: () => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (identifier: string, password: string) => Promise<void>; // identifier: بريد أو اسم مستخدم
   signOut: () => Promise<void>;
   clearError: () => void;
   refreshUser: () => Promise<void>;
 }
 
-// 🔑 مفتاح لمنع تكرار التهيئة
 let authInitialized = false;
 let authUnsubscribe: (() => void) | null = null;
 
@@ -42,11 +41,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   initialized: false,
   error: null,
 
-  /**
-   * تهيئة المصادقة — مرة واحدة فقط
-   */
   initialize: async () => {
-    // 🔑 منع التكرار
     if (authInitialized) {
       console.log('✅ Auth already initialized');
       return;
@@ -56,7 +51,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ loading: true });
 
-      // 1. جلب الجلسة الحالية
       const session = await getCurrentSession();
 
       if (session?.user) {
@@ -64,7 +58,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (user) {
           set({ session, user });
         } else {
-          // جلسة موجودة لكن لا يوجد profile
           await supabase.auth.signOut();
           set({ session: null, user: null });
         }
@@ -72,13 +65,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       set({ initialized: true, loading: false });
 
-      // 2. الاستماع لتغييرات Auth — مرة واحدة فقط
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
           console.log('🔄 Auth event:', event);
 
           if (event === 'SIGNED_IN' && session?.user) {
-            // 🔑 لا نعيد الجلب إذا كان المستخدم موجوداً بنفس الـ ID
             const currentUser = get().user;
             if (currentUser?.authUserId === session.user.id) {
               return;
@@ -96,7 +87,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
       );
 
-      // حفظ unsubscribe
       authUnsubscribe = () => subscription.unsubscribe();
     } catch (err) {
       console.error('❌ Initialize error:', err);
@@ -109,13 +99,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   /**
-   * تسجيل الدخول
+   * تسجيل الدخول باستخدام البريد أو اسم المستخدم
    */
-  signIn: async (email, password) => {
+  signIn: async (identifier, password) => {
     try {
       set({ loading: true, error: null });
 
-      const { user: authUser } = await authSignIn(email, password);
+      const { user: authUser } = await authSignIn(identifier, password);
       if (!authUser) throw new Error('فشل تسجيل الدخول');
 
       const user = await fetchUserProfile(authUser.id);
@@ -139,9 +129,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  /**
-   * تسجيل الخروج
-   */
   signOut: async () => {
     try {
       set({ loading: true });
@@ -163,7 +150,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 }));
 
-// 🔑 تنظيف عند إغلاق التطبيق
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     authUnsubscribe?.();

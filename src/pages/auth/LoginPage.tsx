@@ -1,7 +1,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Mail, Lock, LogIn } from 'lucide-react';
+import { Mail, Lock, LogIn, User, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store';
 import { Button, Input, Card } from '../../components/ui';
 
@@ -10,29 +10,40 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { signIn, loading, error, clearError, user, initialized } = useAuthStore();
 
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState(''); // بريد أو اسم مستخدم
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState('');
 
-  // 🔑 التوجيه داخل useEffect (ليس في render)
   useEffect(() => {
     if (initialized && user) {
       navigate('/select-entity', { replace: true });
     }
   }, [initialized, user, navigate]);
 
+  // التمييز لتغيير الأيقونة فقط
+  const isEmail = identifier.includes('@');
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLocalError('');
     clearError();
 
-    if (!email || !password) {
-      setLocalError('الرجاء إدخال البريد وكلمة المرور');
+    // تنظيف المدخلات (حذف المسافات وتحويلها لحروف صغيرة)
+    const cleanIdentifier = identifier.trim().toLowerCase();
+
+    if (!cleanIdentifier || !password) {
+      setLocalError('الرجاء إدخال البريد/اسم المستخدم وكلمة المرور');
+      return;
+    }
+
+    if (cleanIdentifier.includes('@') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanIdentifier)) {
+      setLocalError('صيغة البريد الإلكتروني غير صحيحة');
       return;
     }
 
     try {
-      await signIn(email, password);
+      await signIn(cleanIdentifier, password);
     } catch {
       // الخطأ يظهر من الـ store
     }
@@ -62,31 +73,53 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <Input
-              type="email"
-              label={t('auth.email')}
-              placeholder="example@edc.ps"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              icon={<Mail className="w-5 h-5" />}
+              type="text"
+              label="البريد الإلكتروني أو اسم المستخدم"
+              placeholder="example@edc.ps أو username"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              icon={
+                isEmail ? (
+                  <Mail className="w-5 h-5" />
+                ) : (
+                  <User className="w-5 h-5" />
+                )
+              }
               required
-              autoComplete="email"
+              autoComplete="username"
               autoFocus
               dir="ltr"
               className="text-left"
             />
 
-            <Input
-              type="password"
-              label={t('auth.password')}
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              icon={<Lock className="w-5 h-5" />}
-              required
-              autoComplete="current-password"
-              dir="ltr"
-              className="text-left"
-            />
+            <div className="relative" dir="ltr">
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                label={t('auth.password')}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                icon={<Lock className="w-5 h-5" />}
+                required
+                autoComplete="current-password"
+                dir="ltr"
+                className="text-left pl-11"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                className="absolute left-3 top-[36px] text-text-muted hover:text-text transition-colors z-10"
+                aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                tabIndex={-1}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-5 h-5" />
+                ) : (
+                  <Eye className="w-5 h-5" />
+                )}
+              </button>
+            </div>
 
             {displayError && (
               <div className="bg-danger/10 border border-danger/30 text-danger px-4 py-3 rounded-lg text-sm flex items-start gap-2">

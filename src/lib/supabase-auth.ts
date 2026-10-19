@@ -21,11 +21,34 @@ export interface AuthUser {
 // ═══════════════════════════════════════════════════════════
 
 /**
- * تسجيل الدخول بالبريد وكلمة المرور
+ * تسجيل الدخول بالبريد أو اسم المستخدم وكلمة المرور
  */
-export async function signIn(email: string, password: string) {
+export async function signIn(identifier: string, password: string) {
+  const cleanIdentifier = identifier.trim().toLowerCase();
+  let emailToAuth = cleanIdentifier;
+
+  // إذا لم يكن بريداً إلكترونياً، فهو اسم مستخدم
+  if (!cleanIdentifier.includes('@')) {
+    // 🔑 استدعاء دالة RPC الآمنة للبحث عن البريد
+    const { data: rpcData, error: rpcError } = await supabase
+      .rpc('get_email_by_username', { p_username: cleanIdentifier });
+
+    if (rpcError) {
+      console.error('❌ خطأ في البحث عن اسم المستخدم:', rpcError);
+      throw new Error('حدث خطأ في الاتصال بقاعدة البيانات');
+    }
+
+    // التحقق مما إذا كانت الدالة قد أرجعت أي نتيجة
+    if (!rpcData || rpcData.length === 0 || !rpcData[0].email) {
+      throw new Error('اسم المستخدم غير موجود أو الحساب غير مفعل');
+    }
+
+    emailToAuth = rpcData[0].email;
+  }
+
+  // إرسال الطلب لـ Supabase بالبريد الإلكتروني
   const { data, error } = await supabase.auth.signInWithPassword({
-    email,
+    email: emailToAuth,
     password,
   });
 
