@@ -14,16 +14,26 @@ export interface ActiveEntity {
   roleCode: RoleCode;
   roleId: string;
   assignmentId: string;
+  regionModes: ('rl' | 'tls')[];
+}
+
+interface RawAssignment {
+  entityId: string;
+  entityName: string;
+  entityTypeCode: string;
+  roleCode: RoleCode;
+  roleId: string;
+  assignmentId: string;
   regionMode?: 'rl' | 'tls' | null;
 }
 
 interface EntityState {
   activeEntity: ActiveEntity | null;
-  availableEntities: ActiveEntity[];
+  availableEntities: RawAssignment[];
   initialized: boolean;
 
   loadUserEntities: (userId: string) => Promise<void>;
-  setActiveEntity: (entity: ActiveEntity) => void;
+  setActiveEntity: (entityId: string) => void;
   clearEntities: () => void;
 }
 
@@ -40,7 +50,6 @@ export const useEntityStore = create<EntityState>()(
 
       loadUserEntities: async (userId: string) => {
         try {
-          // 1. جلب الإسنادات النشطة
           const { data: assignments, error } = await supabase
             .from('user_entity_roles')
             .select(`
@@ -59,11 +68,9 @@ export const useEntityStore = create<EntityState>()(
 
           if (error) throw error;
 
-          // 2. تحويل إلى ActiveEntity
-          const availableEntities: ActiveEntity[] = (assignments || [])
+          const rawAssignments: RawAssignment[] = (assignments || [])
             .map((ua: any) => {
               if (!ua.entities) return null;
-
               return {
                 entityId: ua.entity_id,
                 entityName: ua.entities.name_ar,
@@ -74,22 +81,41 @@ export const useEntityStore = create<EntityState>()(
                 regionMode: ua.region_mode || null,
               };
             })
-            .filter(Boolean) as ActiveEntity[];
+            .filter(Boolean) as RawAssignment[];
 
-          set({ availableEntities, initialized: true });
+          set({ availableEntities: rawAssignments, initialized: true });
 
-          // 3. تعيين activeEntity تلقائياً
           const current = get().activeEntity;
-          const stillValid = current
-            ? availableEntities.find(
-                (e) => e.assignmentId === current.assignmentId
-              )
-            : null;
+          let targetEntityId: string | null = null;
 
-          if (stillValid) {
-            set({ activeEntity: stillValid });
-          } else if (availableEntities.length > 0) {
-            set({ activeEntity: availableEntities[0] });
+          if (current) {
+            targetEntityId = current.entityId;
+          } else if (rawAssignments.length > 0) {
+            targetEntityId = rawAssignments[0].entityId;
+          }
+
+          if (targetEntityId) {
+            const allForEntity = rawAssignments.filter(
+              (a) => a.entityId === targetEntityId
+            );
+            if (allForEntity.length > 0) {
+              const primary = allForEntity[0];
+              const regionModes = Array.from(
+                new Set(
+                  allForEntity
+                    .map((a) => a.regionMode)
+                    .filter(Boolean) as ('rl' | 'tls')[]
+                )
+              );
+              set({
+                activeEntity: {
+                  ...primary,
+                  regionModes,
+                },
+              });
+            } else {
+              set({ activeEntity: null });
+            }
           } else {
             set({ activeEntity: null });
           }
@@ -99,8 +125,27 @@ export const useEntityStore = create<EntityState>()(
         }
       },
 
-      setActiveEntity: (entity: ActiveEntity) => {
-        set({ activeEntity: entity });
+      setActiveEntity: (entityId: string) => {
+        const allAssignments = get().availableEntities.filter(
+          (a) => a.entityId === entityId
+        );
+        if (allAssignments.length === 0) return;
+
+        const primary = allAssignments[0];
+        const regionModes = Array.from(
+          new Set(
+            allAssignments
+              .map((a) => a.regionMode)
+              .filter(Boolean) as ('rl' | 'tls')[]
+          )
+        );
+
+        set({
+          activeEntity: {
+            ...primary,
+            regionModes,
+          },
+        });
       },
 
       clearEntities: () => {

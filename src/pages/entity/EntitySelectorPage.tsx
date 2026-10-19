@@ -19,25 +19,54 @@ export function EntitySelectorPage() {
     setActiveEntity,
   } = useEntityStore();
 
-  // ⭐ تأمين المتغيرات
-  const safeEntities = availableEntities ?? [];
+  // ⭐ تجميع الإسنادات حسب entityId
+  const groupedEntities = (() => {
+    const map = new Map<
+      string,
+      {
+        entityId: string;
+        entityName: string;
+        entityTypeCode: string;
+        roleCode: string;
+        regionModes: ('rl' | 'tls')[];
+      }
+    >();
 
-  // 1. تحميل الكيانات
+    (availableEntities ?? []).forEach((a) => {
+      if (!map.has(a.entityId)) {
+        map.set(a.entityId, {
+          entityId: a.entityId,
+          entityName: a.entityName,
+          entityTypeCode: a.entityTypeCode,
+          roleCode: a.roleCode,
+          regionModes: [],
+        });
+      }
+      if (a.regionMode) {
+        const entry = map.get(a.entityId)!;
+        if (!entry.regionModes.includes(a.regionMode)) {
+          entry.regionModes.push(a.regionMode);
+        }
+      }
+    });
+
+    return Array.from(map.values());
+  })();
+
   useEffect(() => {
     if (user && !initialized) {
       loadUserEntities(user.id);
     }
   }, [user, initialized, loadUserEntities]);
 
-  // 2. التوجيه التلقائي
   useEffect(() => {
-    if (initialized && safeEntities.length === 0) {
+    if (initialized && groupedEntities.length === 0) {
       navigate('/dashboard', { replace: true });
     }
-  }, [initialized, safeEntities.length, navigate]);
+  }, [initialized, groupedEntities.length, navigate]);
 
-  const handleSelect = (entity: (typeof safeEntities)[0]) => {
-    setActiveEntity(entity);
+  const handleSelect = (entityId: string) => {
+    setActiveEntity(entityId);
     navigate('/dashboard', { replace: true });
   };
 
@@ -45,7 +74,7 @@ export function EntitySelectorPage() {
     return <Loading message="جاري تحميل الكيانات..." />;
   }
 
-  if (safeEntities.length === 0) {
+  if (groupedEntities.length === 0) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center p-4">
         <Card padding="lg" className="max-w-md w-full text-center">
@@ -67,7 +96,6 @@ export function EntitySelectorPage() {
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-4">
       <div className="w-full max-w-2xl space-y-6">
-        {/* Header */}
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-light rounded-full mb-4">
             <Building2 className="w-8 h-8 text-primary" />
@@ -80,16 +108,15 @@ export function EntitySelectorPage() {
           </p>
         </div>
 
-        {/* Entity List */}
         <Card padding="md">
           <div className="space-y-2">
-            {safeEntities.map((entity) => {
-              const isActive = entity.assignmentId === activeEntity?.assignmentId;
+            {groupedEntities.map((entity) => {
+              const isActive = entity.entityId === activeEntity?.entityId;
 
               return (
                 <button
-                  key={entity.assignmentId}
-                  onClick={() => handleSelect(entity)}
+                  key={entity.entityId}
+                  onClick={() => handleSelect(entity.entityId)}
                   className={`
                     w-full flex items-center gap-4 p-4 rounded-lg
                     border transition-all text-right
@@ -100,7 +127,6 @@ export function EntitySelectorPage() {
                     }
                   `}
                 >
-                  {/* Icon */}
                   <div
                     className={`
                       flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center
@@ -122,19 +148,17 @@ export function EntitySelectorPage() {
                     )}
                   </div>
 
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-text flex items-center gap-2">
+                    <div className="font-semibold text-text flex items-center gap-2 flex-wrap">
                       {entity.entityName}
-                      {entity.regionMode && (
-                        <span
-                          className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                            entity.regionMode === 'rl'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-green-100 text-green-700'
-                          }`}
-                        >
-                          {entity.regionMode === 'rl' ? 'R.L' : 'TLS'}
+                      {entity.regionModes.includes('rl') && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-700">
+                          R.L
+                        </span>
+                      )}
+                      {entity.regionModes.includes('tls') && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-green-100 text-green-700">
+                          TLS
                         </span>
                       )}
                     </div>
@@ -143,7 +167,6 @@ export function EntitySelectorPage() {
                     </div>
                   </div>
 
-                  {/* Check */}
                   {isActive && (
                     <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center">
                       <Check className="w-4 h-4" />
@@ -155,7 +178,6 @@ export function EntitySelectorPage() {
           </div>
         </Card>
 
-        {/* Footer */}
         <div className="text-center text-xs text-text-muted">
           مسجل الدخول باسم: {user?.fullName}
         </div>

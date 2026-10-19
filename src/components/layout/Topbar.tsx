@@ -27,7 +27,13 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   // ⭐ تأمين المتغيرات
-  const safeEntities = availableEntities ?? [];
+  const safeAvailableEntities = availableEntities ?? [];
+  const safeRegionModes: ('rl' | 'tls')[] = activeEntity?.regionModes ?? [];
+
+  const uniqueEntityIds = new Set(
+    safeAvailableEntities.map((a) => a.entityId)
+  );
+  const safeEntityCount = uniqueEntityIds.size;
 
   const handleSwitchEntity = () => {
     navigate('/select-entity');
@@ -41,9 +47,7 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
 
   return (
     <header className="h-16 bg-surface border-b border-border flex items-center justify-between px-4 sticky top-0 z-40">
-      {/* Right side — menu + entity */}
       <div className="flex items-center gap-3">
-        {/* Menu Toggle */}
         <button
           onClick={onToggleSidebar}
           className="p-2 rounded-lg hover:bg-bg-secondary text-text-secondary transition-colors"
@@ -52,7 +56,6 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
           <Menu className="w-5 h-5" />
         </button>
 
-        {/* Entity Info */}
         {activeEntity && (
           <div className="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-bg-secondary">
             <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center">
@@ -62,24 +65,22 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
               <div className="text-xs text-text-muted leading-none mb-0.5">
                 {activeEntity.roleCode || ''}
               </div>
-              <div className="text-sm font-medium text-text leading-none flex items-center gap-2">
+              <div className="text-sm font-medium text-text leading-none flex items-center gap-2 flex-wrap">
                 {activeEntity.entityName}
-                {activeEntity.regionMode && (
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                      activeEntity.regionMode === 'rl'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-green-100 text-green-700'
-                    }`}
-                  >
-                    {activeEntity.regionMode === 'rl' ? 'R.L' : 'TLS'}
+                {safeRegionModes.includes('rl') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-700">
+                    R.L
+                  </span>
+                )}
+                {safeRegionModes.includes('tls') && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-green-100 text-green-700">
+                    TLS
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Switch Entity */}
-            {safeEntities.length > 1 && (
+            {safeEntityCount > 1 && (
               <button
                 onClick={handleSwitchEntity}
                 className="p-1.5 rounded-md hover:bg-surface text-text-secondary transition-colors"
@@ -92,11 +93,9 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
         )}
       </div>
 
-      {/* Left side — notifications + user menu */}
       <div className="flex items-center gap-2">
         <NotificationBell />
 
-        {/* User Menu */}
         <div className="relative">
           <button
             onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -111,7 +110,6 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
             <ChevronDown className="w-4 h-4 text-text-muted hidden sm:block" />
           </button>
 
-          {/* Dropdown */}
           {userMenuOpen && (
             <>
               <div
