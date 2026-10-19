@@ -299,7 +299,7 @@ export function ViewReportPage() {
   // ⭐ استرجاع activeEntity إذا فُقد (بديل restoreActiveEntity)
   useEffect(() => {
     if (!activeEntity && availableEntities && availableEntities.length > 0) {
-      setActiveEntity(availableEntities[0]);
+      setActiveEntity(availableEntities[0].entityId);
     }
   }, [activeEntity, availableEntities, setActiveEntity]);
 

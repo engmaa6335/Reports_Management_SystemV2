@@ -35,7 +35,8 @@ export function DashboardPage() {
     if (safeEntities.length === 0) return;
 
     if (safeEntities.length === 1 && !activeEntity) {
-      setActiveEntity(safeEntities[0]);
+      // 👈 التعديل هنا: استخدمنا entityId بدلاً من id
+      setActiveEntity(safeEntities[0].entityId); 
       return;
     }
 
@@ -80,15 +81,16 @@ export function DashboardPage() {
           </h1>
           <p className="text-text-secondary mt-1">
             أنت الآن في: <strong>{activeEntity.entityName}</strong>
-            {activeEntity.regionMode && (
+            {/* 👈 تصحيح: استخدام regionModes بدلاً من regionMode */}
+            {activeEntity.regionModes && activeEntity.regionModes.length > 0 && (
               <span
                 className={`mr-2 text-xs px-2 py-1 rounded font-bold ${
-                  activeEntity.regionMode === 'rl'
+                  activeEntity.regionModes.includes('rl')
                     ? 'bg-blue-100 text-blue-700'
                     : 'bg-green-100 text-green-700'
                 }`}
               >
-                {activeEntity.regionMode === 'rl' ? 'R.L' : 'TLS'}
+                {activeEntity.regionModes.includes('rl') ? 'R.L' : 'TLS'}
               </span>
             )}
           </p>
