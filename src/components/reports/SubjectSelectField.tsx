@@ -79,13 +79,13 @@ export function SubjectSelectField({
 
       console.log('🔍 public.users.id:', publicUser.id);
 
-      // ⭐ 3. جلب المواد المُسندة
+      // ⭐ 3. جلب المواد المُسندة (مع تحديد العلاقة الصريحة)
       const { data, error: fetchError } = await supabase
         .from('user_subject_assignments')
         .select(
           `
           subject_code,
-          subject:subjects ( code, name_ar, icon, color )
+          subject:subjects!user_subject_assignments_subject_code_fkey ( code, name_ar, icon, color )
         `
         )
         .eq('user_id', publicUser.id)

@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   FileText,
   Plus,
@@ -20,15 +21,11 @@ import { useTemplatesStore } from '../../stores/templates-store';
 import { Button, Card, Input } from '../../components/ui';
 import { Loading } from '../../components/ui/Loading';
 
-// ================================================
-// Helpers
-// ================================================
-
-function formatDate(dateStr: string | null): string {
+function formatDate(dateStr: string | null, lang: string): string {
   if (!dateStr) return '—';
   try {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('ar-EG', {
+    return date.toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -38,16 +35,25 @@ function formatDate(dateStr: string | null): string {
   }
 }
 
-function getStatusBadge(status: string): {
-  label: string;
-  className: string;
-} {
+function getStatusBadge(
+  status: string,
+  t: (key: string) => string
+): { label: string; className: string } {
   const badges: Record<string, { label: string; className: string }> = {
-    active: { label: '🟢 نشط', className: 'bg-success/10 text-success' },
-    updated: { label: '🔵 محدّث', className: 'bg-info/10 text-info' },
-    aggregated: { label: '🟡 مُجمّع', className: 'bg-warning/10 text-warning' },
+    active: {
+      label: t('reports_page.status_active'),
+      className: 'bg-success/10 text-success',
+    },
+    updated: {
+      label: t('reports_page.status_updated'),
+      className: 'bg-info/10 text-info',
+    },
+    aggregated: {
+      label: t('reports_page.status_aggregated'),
+      className: 'bg-warning/10 text-warning',
+    },
     archived: {
-      label: '⚪ مؤرشف',
+      label: t('reports_page.status_archived'),
       className: 'bg-text-muted/10 text-text-muted',
     },
   };
@@ -59,13 +65,16 @@ function getStatusBadge(status: string): {
   );
 }
 
-function getPeriodLabel(periodType: string | null): string {
+function getPeriodLabel(
+  periodType: string | null,
+  t: (key: string) => string
+): string {
   if (!periodType) return '—';
   const labels: Record<string, string> = {
-    weekly: 'أسبوعي',
-    biweekly: 'كل أسبوعين',
-    monthly: 'شهري',
-    custom: 'مخصص',
+    weekly: t('reports_page.period_weekly'),
+    biweekly: t('reports_page.period_biweekly'),
+    monthly: t('reports_page.period_monthly'),
+    custom: t('reports_page.period_custom'),
   };
   return labels[periodType] || periodType;
 }
@@ -84,7 +93,6 @@ function canCreateReports(roleCode: string | undefined): boolean {
   ].includes(roleCode);
 }
 
-// ⭐ كشف نوع القالب
 function getTemplateKind(
   templateCode: string | undefined
 ): 'tls' | 'rl' | 'other' {
@@ -97,18 +105,11 @@ function getTemplateKind(
   return 'other';
 }
 
-// ================================================
-// Types
-// ================================================
-
 type StatusFilter = 'all' | 'active' | 'updated' | 'aggregated' | 'archived';
 type KindFilter = 'all' | 'rl' | 'tls';
 
-// ================================================
-// Component
-// ================================================
-
 export function ReportsListPage() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { activeEntity } = useEntityStore();
@@ -124,7 +125,6 @@ export function ReportsListPage() {
   const { templates, loading: templatesLoading, loadAvailableTemplates } =
     useTemplatesStore();
 
-  // ⭐ الفلتر الموحّد
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -135,37 +135,31 @@ export function ReportsListPage() {
   const allowCreate = canCreateReports(activeEntity?.roleCode);
   const noTemplates = !templatesLoading && templates.length === 0;
 
-  // تحميل التقارير
   useEffect(() => {
     if (user && activeEntity) {
       loadReports(user.id, activeEntity.entityId);
     }
   }, [user, activeEntity, loadReports]);
 
-  // تحميل القوالب
   useEffect(() => {
     if (activeEntity?.roleCode) {
       loadAvailableTemplates(activeEntity.roleCode);
     }
   }, [activeEntity?.roleCode, activeEntity?.entityId, loadAvailableTemplates]);
 
-  // ⭐ الفلترة الموحّدة
   const filteredReports = useMemo(() => {
     let result = reports;
 
-    // الحالة
     if (statusFilter !== 'all') {
       result = result.filter((r) => r.status === statusFilter);
     }
 
-    // النوع (من الأزرار العلوية)
     if (kindFilter !== 'all') {
       result = result.filter(
         (r) => getTemplateKind(r.template?.code) === kindFilter
       );
     }
 
-    // البحث
     if (filters.searchQuery) {
       const q = filters.searchQuery.toLowerCase();
       result = result.filter(
@@ -176,7 +170,6 @@ export function ReportsListPage() {
       );
     }
 
-    // ⭐ الفترة الزمنية من
     if (filters.periodStart) {
       result = result.filter((r) => {
         const d = r.period_start || r.created_at;
@@ -184,7 +177,6 @@ export function ReportsListPage() {
       });
     }
 
-    // ⭐ الفترة الزمنية إلى
     if (filters.periodEnd) {
       result = result.filter((r) => {
         const d = r.period_start || r.created_at;
@@ -202,7 +194,6 @@ export function ReportsListPage() {
     filters.periodEnd,
   ]);
 
-  // عدادات الحالة
   const statusCounts = useMemo(
     () => ({
       all: reports.length,
@@ -214,23 +205,24 @@ export function ReportsListPage() {
     [reports]
   );
 
-  // عنوان الصفحة
   const pageTitle = useMemo(() => {
     const role = activeEntity?.roleCode;
-    if (role === 'tech_support') return '📝 جميع التقارير';
-    if (role === 'edc_viewer') return '📝 جميع التقارير (EDC)';
-    if (role === 'qa_chief') return '📝 تقارير الفريق';
-    if (role === 'region_manager') return '📝 تقارير المنطقة';
-    if (role === 'region_assistant') return '📝 تقارير المنطقة';
-    if (role === 'qa_coordinator') return '📝 تقاريري';
-    if (role === 'edu_specialist') return '📝 تقاريري';
-    if (role === 'school_manager') return '📝 تقارير مدرستي';
-    if (role === 'tls_manager') return '📝 تقارير مركزي';
-    return '📝 التقارير';
-  }, [activeEntity]);
+    if (role === 'tech_support' || role === 'edc_viewer')
+      return `📝 ${t('reports_page.all_reports')}`;
+    if (role === 'qa_chief') return `📝 ${t('reports_page.team_reports')}`;
+    if (role === 'region_manager' || role === 'region_assistant')
+      return `📝 ${t('reports_page.region_reports')}`;
+    if (role === 'qa_coordinator' || role === 'edu_specialist')
+      return `📝 ${t('reports_page.my_reports')}`;
+    if (role === 'school_manager')
+      return `📝 ${t('reports_page.school_reports')}`;
+    if (role === 'tls_manager')
+      return `📝 ${t('reports_page.center_reports')}`;
+    return `📝 ${t('reports_page.reports')}`;
+  }, [activeEntity, t]);
 
   if (loading && reports.length === 0) {
-    return <Loading message="جاري تحميل التقارير..." />;
+    return <Loading message={t('reports_page.loading_reports')} />;
   }
 
   return (
@@ -241,8 +233,12 @@ export function ReportsListPage() {
           <h1 className="text-2xl font-bold text-text">{pageTitle}</h1>
           <p className="text-text-secondary mt-1">
             {canViewAll
-              ? `عرض جميع التقارير في النظام — ${activeEntity?.entityName}`
-              : `عرض وإدارة تقاريرك في ${activeEntity?.entityName}`}
+              ? t('reports_page.view_all_desc', {
+                  entity: activeEntity?.entityName || '',
+                })
+              : t('reports_page.view_my_desc', {
+                  entity: activeEntity?.entityName || '',
+                })}
           </p>
         </div>
 
@@ -252,7 +248,7 @@ export function ReportsListPage() {
             icon={<Plus className="w-4 h-4" />}
             onClick={() => navigate('/reports/new')}
           >
-            إنشاء تقرير جديد
+            {t('reports_page.create_report')}
           </Button>
         )}
       </div>
@@ -264,11 +260,12 @@ export function ReportsListPage() {
             <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
             <div className="text-sm">
               <p className="font-semibold text-warning mb-1">
-                لا توجد قوالب متاحة في منطقة "{activeEntity?.entityName}"
+                {t('reports_page.no_templates_warning', {
+                  entity: activeEntity?.entityName || '',
+                })}
               </p>
               <p className="text-warning/90">
-                بعض القوالب (مثل TLS) تظهر فقط في المناطق التي تحتوي على
-                مراكز تعليمية. جرّب تبديل المنطقة من القائمة العلوية.
+                {t('reports_page.no_templates_desc')}
               </p>
             </div>
           </div>
@@ -279,75 +276,71 @@ export function ReportsListPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={<FileText className="w-5 h-5" />}
-          label="إجمالي التقارير"
+          label={t('reports_page.total_reports')}
           value={stats.total}
           color="primary"
         />
         <StatCard
           icon={<Calendar className="w-5 h-5" />}
-          label="هذا الشهر"
+          label={t('reports_page.this_month')}
           value={stats.thisMonth}
           color="info"
         />
         <StatCard
           icon={<Clock className="w-5 h-5" />}
-          label="نشطة"
+          label={t('reports_page.active')}
           value={stats.active}
           color="success"
         />
         <StatCard
           icon={<Archive className="w-5 h-5" />}
-          label="مؤرشفة"
+          label={t('reports_page.archived')}
           value={stats.archived}
           color="warning"
         />
       </div>
 
-      {/* ═══════════════════════════════════════════════ */}
-      {/* ⭐ الفلتر الموحّد الواحد */}
-      {/* ═══════════════════════════════════════════════ */}
+      {/* Filter Card */}
       <Card padding="none">
-        {/* التبويبات */}
         <div className="border-b border-border overflow-x-auto">
           <div className="flex items-center gap-1 px-2 min-w-max">
             <TabButton
               active={statusFilter === 'all'}
               onClick={() => setStatusFilter('all')}
-              label="الكل"
+              label={t('reports_page.all')}
               count={statusCounts.all}
             />
             <TabButton
               active={statusFilter === 'active'}
               onClick={() => setStatusFilter('active')}
-              label="🟢 نشط"
+              label={t('reports_page.status_active')}
               count={statusCounts.active}
             />
             <TabButton
               active={statusFilter === 'updated'}
               onClick={() => setStatusFilter('updated')}
-              label="🔵 محدّث"
+              label={t('reports_page.status_updated')}
               count={statusCounts.updated}
             />
             <TabButton
               active={statusFilter === 'aggregated'}
               onClick={() => setStatusFilter('aggregated')}
-              label="🟡 مُجمّع"
+              label={t('reports_page.status_aggregated')}
               count={statusCounts.aggregated}
             />
             <TabButton
               active={statusFilter === 'archived'}
               onClick={() => setStatusFilter('archived')}
-              label="⚪ مؤرشف"
+              label={t('reports_page.status_archived')}
               count={statusCounts.archived}
             />
           </div>
         </div>
 
-        {/* Search & Filter Bar */}
         <div className="p-4 flex items-center gap-3 flex-wrap">
           <div className="flex-1 min-w-[240px]">
             <Input
-              placeholder="ابحث بالاسم، الكيان، أو المُنشئ..."
+              placeholder={t('reports_page.search_placeholder')}
               icon={<Search className="w-4 h-4" />}
               value={filters.searchQuery || ''}
               onChange={(e) => setFilters({ searchQuery: e.target.value })}
@@ -359,7 +352,7 @@ export function ReportsListPage() {
             icon={<Filter className="w-4 h-4" />}
             onClick={() => setShowAdvanced(!showAdvanced)}
           >
-            خيارات متقدمة
+            {t('reports_page.advanced_options')}
           </Button>
 
           {(filters.searchQuery ||
@@ -385,19 +378,17 @@ export function ReportsListPage() {
                 });
               }}
             >
-              مسح
+              {t('reports_page.clear')}
             </Button>
           )}
         </div>
 
-        {/* ⭐ الخيارات المتقدمة */}
         {showAdvanced && (
           <div className="px-4 pb-4 border-t border-border pt-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* نوع التقرير */}
               <div>
                 <label className="block text-xs font-medium text-text-muted mb-1">
-                  نوع التقرير
+                  {t('reports_page.report_type')}
                 </label>
                 <select
                   value={kindFilter}
@@ -406,16 +397,19 @@ export function ReportsListPage() {
                   }
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm"
                 >
-                  <option value="all">كل التقارير</option>
-                  <option value="rl">زيارات مختص تربوي R.L</option>
-                  <option value="tls">زيارات مختص تربوي TLS</option>
+                  <option value="all">{t('reports_page.all')}</option>
+                  <option value="rl">
+                    {t('aggregates_page.report_type_rl')}
+                  </option>
+                  <option value="tls">
+                    {t('aggregates_page.report_type_tls')}
+                  </option>
                 </select>
               </div>
 
-              {/* الفترة الزمنية من */}
               <div>
                 <label className="block text-xs font-medium text-text-muted mb-1">
-                  الفترة الزمنية — من
+                  {t('reports_page.period_from')}
                 </label>
                 <input
                   type="date"
@@ -427,10 +421,9 @@ export function ReportsListPage() {
                 />
               </div>
 
-              {/* الفترة الزمنية إلى */}
               <div>
                 <label className="block text-xs font-medium text-text-muted mb-1">
-                  الفترة الزمنية — إلى
+                  {t('reports_page.period_to')}
                 </label>
                 <input
                   type="date"
@@ -463,17 +456,19 @@ export function ReportsListPage() {
             </div>
             <h2 className="text-xl font-semibold text-text mb-2">
               {reports.length === 0
-                ? 'لا توجد تقارير بعد'
-                : 'لا توجد نتائج مطابقة'}
+                ? t('reports_page.no_reports_title')
+                : t('reports_page.no_results_title')}
             </h2>
             <p className="text-text-secondary mb-6 max-w-md mx-auto">
               {reports.length === 0
                 ? allowCreate
                   ? noTemplates
-                    ? `لا توجد قوالب متاحة في "${activeEntity?.entityName}". جرّب تبديل المنطقة من القائمة العلوية.`
-                    : 'ابدأ بإنشاء أول تقرير لك'
-                  : 'ليس لديك صلاحية لإنشاء التقارير'
-                : 'جرّب تغيير الفلاتر أو البحث'}
+                    ? t('reports_page.no_templates_in_region', {
+                        entity: activeEntity?.entityName || '',
+                      })
+                    : t('reports_page.no_reports_desc')
+                  : t('reports_page.no_permission')
+                : t('reports_page.try_change_filters')}
             </p>
             {reports.length === 0 && allowCreate && !noTemplates && (
               <Button
@@ -481,7 +476,7 @@ export function ReportsListPage() {
                 icon={<Plus className="w-4 h-4" />}
                 onClick={() => navigate('/reports/new')}
               >
-                إنشاء تقرير جديد
+                {t('reports_page.create_report')}
               </Button>
             )}
           </div>
@@ -496,28 +491,28 @@ export function ReportsListPage() {
               <thead className="bg-bg-secondary border-b border-border">
                 <tr>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">
-                    التقرير
+                    {t('reports_page.table_report')}
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden md:table-cell">
-                    الفئة
+                    {t('reports_page.table_category')}
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden lg:table-cell">
-                    الكيان
+                    {t('reports_page.table_entity')}
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden lg:table-cell">
-                    المُنشئ
+                    {t('reports_page.table_creator')}
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">
-                    الحالة
+                    {t('reports_page.table_status')}
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">
-                    التاريخ
+                    {t('reports_page.table_date')}
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {filteredReports.map((report) => {
-                  const badge = getStatusBadge(report.status);
+                  const badge = getStatusBadge(report.status, t);
                   return (
                     <tr
                       key={report.id}
@@ -531,12 +526,12 @@ export function ReportsListPage() {
                           </div>
                           <div className="min-w-0">
                             <div className="font-medium text-text truncate">
-                              {report.template?.name_ar || 'تقرير'}
+                              {report.template?.name_ar || t('reports_page.table_report')}
                             </div>
                             <div className="text-xs text-text-muted truncate">
-                              {getPeriodLabel(report.period_type)}
+                              {getPeriodLabel(report.period_type, t)}
                               {report.period_start &&
-                                ` — ${formatDate(report.period_start)}`}
+                                ` — ${formatDate(report.period_start, i18n.language)}`}
                             </div>
                           </div>
                         </div>
@@ -585,7 +580,7 @@ export function ReportsListPage() {
 
                       <td className="px-4 py-4">
                         <div className="text-sm text-text-secondary">
-                          {formatDate(report.created_at)}
+                          {formatDate(report.created_at, i18n.language)}
                         </div>
                       </td>
                     </tr>
@@ -599,10 +594,6 @@ export function ReportsListPage() {
     </div>
   );
 }
-
-// ================================================
-// Sub-Components
-// ================================================
 
 interface StatCardProps {
   icon: React.ReactNode;
@@ -637,7 +628,6 @@ function StatCard({ icon, label, value, color }: StatCardProps) {
   );
 }
 
-// ⭐ زر التبويب — نفس شكل الفلتر الثاني الأصلي
 interface TabButtonProps {
   active: boolean;
   onClick: () => void;

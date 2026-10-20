@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Search,
   Filter,
@@ -14,10 +15,6 @@ import { useAggregatesStore } from '../../stores/aggregates-store';
 import { DeleteAggregateModal } from '../../components/aggregates/DeleteAggregateModal';
 import { Button, Card } from '../../components/ui';
 import type { PeriodType, ReportType } from '../../types/aggregates';
-
-// ═══════════════════════════════════════════════════════════
-// Types
-// ═══════════════════════════════════════════════════════════
 
 type QuickTab = 'all' | 'RL' | 'TLS';
 
@@ -35,11 +32,8 @@ const DEFAULT_ADVANCED: AdvancedFilters = {
   regionId: null,
 };
 
-// ═══════════════════════════════════════════════════════════
-// Aggregates List Page
-// ═══════════════════════════════════════════════════════════
-
 export function AggregatesListPage() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { activeEntity } = useEntityStore();
@@ -53,10 +47,6 @@ export function AggregatesListPage() {
     deleteAggregate,
     clearError,
   } = useAggregatesStore();
-
-  // ═══════════════════════════════════════════
-  // Filters State
-  // ═══════════════════════════════════════════
 
   const [quickTab, setQuickTab] = useState<QuickTab>('all');
   const [search, setSearch] = useState('');
@@ -73,10 +63,6 @@ export function AggregatesListPage() {
 
   const isTechSupport = activeEntity?.roleCode === 'tech_support';
 
-  // ═══════════════════════════════════════════
-  // Load on mount
-  // ═══════════════════════════════════════════
-
   useEffect(() => {
     if (user?.id && activeEntity?.entityId) {
       loadUserAggregates(user.id, activeEntity.entityId);
@@ -87,14 +73,9 @@ export function AggregatesListPage() {
     return () => clearError();
   }, [clearError]);
 
-  // ═══════════════════════════════════════════
-  // ⭐ Filtered Aggregates
-  // ═══════════════════════════════════════════
-
   const filteredAggregates = useMemo(() => {
     let result = [...aggregates];
 
-    // 1. الفلتر السريع (نوع التقرير)
     if (quickTab !== 'all') {
       result = result.filter((a) => {
         const calcs = a.aggregate_template?.calculations as any;
@@ -102,7 +83,6 @@ export function AggregatesListPage() {
       });
     }
 
-    // 2. البحث النصي
     if (search.trim()) {
       const s = search.toLowerCase().trim();
       result = result.filter((a) => {
@@ -118,36 +98,28 @@ export function AggregatesListPage() {
       });
     }
 
-    // 3. فلتر متقدم: نوع الفترة
     if (advanced.periodType) {
       result = result.filter((a) => a.period_type === advanced.periodType);
     }
 
-    // 4. فلتر متقدم: من تاريخ
     if (advanced.periodStart) {
       result = result.filter(
         (a) => (a.period_start || '') >= advanced.periodStart
       );
     }
 
-    // 5. فلتر متقدم: إلى تاريخ
     if (advanced.periodEnd) {
       result = result.filter(
         (a) => (a.period_end || '') <= advanced.periodEnd
       );
     }
 
-    // 6. فلتر متقدم: المنطقة
     if (advanced.regionId) {
       result = result.filter((a) => a.entity_id === advanced.regionId);
     }
 
     return result;
   }, [aggregates, quickTab, search, advanced]);
-
-  // ═══════════════════════════════════════════
-  // Counts (للعرض في التبويبات)
-  // ═══════════════════════════════════════════
 
   const counts = useMemo(() => {
     const rl = aggregates.filter((a) => {
@@ -167,10 +139,6 @@ export function AggregatesListPage() {
     };
   }, [aggregates]);
 
-  // ═══════════════════════════════════════════
-  // Available Regions (للفلتر)
-  // ═══════════════════════════════════════════
-
   const availableRegions = useMemo(() => {
     const map = new Map<string, string>();
     aggregates.forEach((a) => {
@@ -180,10 +148,6 @@ export function AggregatesListPage() {
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [aggregates]);
-
-  // ═══════════════════════════════════════════
-  // Active Filters Count
-  // ═══════════════════════════════════════════
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -199,10 +163,6 @@ export function AggregatesListPage() {
     search.trim() !== '' ||
     activeFiltersCount > 0;
 
-  // ═══════════════════════════════════════════
-  // Handlers
-  // ═══════════════════════════════════════════
-
   const clearAllFilters = () => {
     setQuickTab('all');
     setSearch('');
@@ -213,50 +173,45 @@ export function AggregatesListPage() {
     setAdvanced(DEFAULT_ADVANCED);
   };
 
-  // ═══════════════════════════════════════════
-  // Helpers
-  // ═══════════════════════════════════════════
-
   const getReportTypeLabel = (reportType: string | undefined) => {
-    if (reportType === 'RL') return 'زيارات R.L';
-    if (reportType === 'TLS') return 'زيارات TLS';
-    return 'تقرير';
+    if (reportType === 'RL') return t('aggregates_page.report_type_rl');
+    if (reportType === 'TLS') return t('aggregates_page.report_type_tls');
+    return t('aggregates_page.report_type_generic');
   };
 
   const getPeriodTypeLabel = (periodType: string | null) => {
-    if (periodType === 'biweekly') return 'نصف شهري';
-    if (periodType === 'monthly') return 'شهري';
-    if (periodType === 'custom') return 'مخصص';
+    if (periodType === 'biweekly') return t('aggregates_page.biweekly');
+    if (periodType === 'monthly') return t('aggregates_page.monthly');
+    if (periodType === 'custom') return t('aggregates_page.custom');
     return '—';
   };
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '—';
     try {
-      return new Date(dateStr).toLocaleDateString('ar-EG', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      });
+      return new Date(dateStr).toLocaleDateString(
+        i18n.language === 'ar' ? 'ar-EG' : 'en-US',
+        {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }
+      );
     } catch {
       return dateStr;
     }
   };
 
-  // ═══════════════════════════════════════════
-  // Render
-  // ═══════════════════════════════════════════
-
   return (
-    <div className="space-y-6" dir="rtl">
-      {/* ═══ Header ═══ */}
+    <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text">
-            📊 التقارير التجميعية
+            📊 {t('aggregates_page.title')}
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            عرض وإدارة التقارير التجميعية الخاصة بك
+            {t('aggregates_page.subtitle')}
           </p>
         </div>
 
@@ -265,11 +220,11 @@ export function AggregatesListPage() {
           icon={<span className="text-lg leading-none">+</span>}
           onClick={() => navigate('/aggregates/new')}
         >
-          إنشاء تقرير تجميعي
+          {t('aggregates_page.create_aggregate')}
         </Button>
       </div>
 
-      {/* ═══ Error ═══ */}
+      {/* Error */}
       {error && (
         <Card padding="md" className="border-danger bg-danger/5">
           <div className="flex items-center justify-between text-danger">
@@ -278,13 +233,13 @@ export function AggregatesListPage() {
               onClick={clearError}
               className="text-sm underline hover:no-underline"
             >
-              إغلاق
+              {t('aggregates_page.close')}
             </button>
           </div>
         </Card>
       )}
 
-      {/* ═══ Filters Bar ═══ */}
+      {/* Filters Bar */}
       <Card padding="md">
         <div className="space-y-4">
           {/* Quick Tabs */}
@@ -292,33 +247,32 @@ export function AggregatesListPage() {
             <QuickTabButton
               active={quickTab === 'all'}
               onClick={() => setQuickTab('all')}
-              label="الكل"
+              label={t('aggregates_page.all')}
               count={counts.all}
             />
             <QuickTabButton
               active={quickTab === 'RL'}
               onClick={() => setQuickTab('RL')}
-              label="تجميعي - زيارات R.L"
+              label={t('aggregates_page.rl_visits')}
               count={counts.rl}
             />
             <QuickTabButton
               active={quickTab === 'TLS'}
               onClick={() => setQuickTab('TLS')}
-              label="تجميعي - زيارات TLS"
+              label={t('aggregates_page.tls_visits')}
               count={counts.tls}
             />
           </div>
 
           {/* Search + Advanced Toggle */}
           <div className="flex flex-wrap items-center gap-2">
-            {/* Search */}
             <div className="relative flex-1 min-w-[220px]">
               <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="ابحث باسم التقرير، المنطقة، أو المختص..."
+                placeholder={t('aggregates_page.search_placeholder')}
                 className="w-full rounded-lg border border-border bg-surface py-2.5 pr-10 pl-10 text-sm text-text placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
               {search && (
@@ -331,14 +285,13 @@ export function AggregatesListPage() {
               )}
             </div>
 
-            {/* Advanced Toggle */}
             <Button
               variant={advancedOpen ? 'primary' : 'ghost'}
               size="sm"
               icon={<Filter className="h-4 w-4" />}
               onClick={() => setAdvancedOpen(!advancedOpen)}
             >
-              فلترة متقدمة
+              {t('aggregates_page.advanced_filter')}
               {activeFiltersCount > 0 && (
                 <span className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs">
                   {activeFiltersCount}
@@ -351,7 +304,6 @@ export function AggregatesListPage() {
               />
             </Button>
 
-            {/* Clear All */}
             {hasAnyFilter && (
               <Button
                 variant="ghost"
@@ -360,7 +312,7 @@ export function AggregatesListPage() {
                 onClick={clearAllFilters}
                 className="text-danger hover:bg-danger/10"
               >
-                مسح الكل
+                {t('aggregates_page.clear_all')}
               </Button>
             )}
           </div>
@@ -369,11 +321,10 @@ export function AggregatesListPage() {
           {advancedOpen && (
             <div className="rounded-lg border border-border bg-bg-secondary/50 p-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {/* Period Type */}
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-text-secondary">
                     <Calendar className="inline h-3.5 w-3.5 ml-1" />
-                    فترة التقرير
+                    {t('aggregates_page.period_type')}
                   </label>
                   <select
                     value={advanced.periodType || ''}
@@ -385,17 +336,16 @@ export function AggregatesListPage() {
                     }
                     className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    <option value="">كل الفترات</option>
-                    <option value="biweekly">نصف شهري</option>
-                    <option value="monthly">شهري</option>
-                    <option value="custom">مخصص</option>
+                    <option value="">{t('aggregates_page.all_periods')}</option>
+                    <option value="biweekly">{t('aggregates_page.biweekly')}</option>
+                    <option value="monthly">{t('aggregates_page.monthly')}</option>
+                    <option value="custom">{t('aggregates_page.custom')}</option>
                   </select>
                 </div>
 
-                {/* Period Start */}
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                    من تاريخ
+                    {t('aggregates_page.from_date')}
                   </label>
                   <input
                     type="date"
@@ -407,10 +357,9 @@ export function AggregatesListPage() {
                   />
                 </div>
 
-                {/* Period End */}
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-text-secondary">
-                    إلى تاريخ
+                    {t('aggregates_page.to_date')}
                   </label>
                   <input
                     type="date"
@@ -422,11 +371,10 @@ export function AggregatesListPage() {
                   />
                 </div>
 
-                {/* Region */}
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-text-secondary">
                     <MapPin className="inline h-3.5 w-3.5 ml-1" />
-                    المنطقة
+                    {t('aggregates_page.region')}
                   </label>
                   <select
                     value={advanced.regionId || ''}
@@ -438,7 +386,7 @@ export function AggregatesListPage() {
                     }
                     className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    <option value="">كل المناطق</option>
+                    <option value="">{t('aggregates_page.all_regions')}</option>
                     {availableRegions.map((region) => (
                       <option key={region.id} value={region.id}>
                         {region.name}
@@ -448,50 +396,52 @@ export function AggregatesListPage() {
                 </div>
               </div>
 
-              {/* Clear Advanced */}
               {activeFiltersCount > 0 && (
                 <div className="mt-3 flex justify-end">
                   <button
                     onClick={clearAdvanced}
                     className="text-xs text-danger hover:underline"
                   >
-                    مسح الفلاتر المتقدمة
+                    {t('aggregates_page.clear_advanced')}
                   </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* Results Count */}
           <div className="flex items-center justify-between text-xs text-text-muted">
-            <span>
-              عرض <strong className="text-text">{filteredAggregates.length}</strong>{' '}
-              من {aggregates.length} تقرير
-            </span>
+            <span
+              dangerouslySetInnerHTML={{
+                __html: t('aggregates_page.showing', {
+                  filtered: filteredAggregates.length,
+                  total: aggregates.length,
+                }),
+              }}
+            />
           </div>
         </div>
       </Card>
 
-      {/* ═══ Loading ═══ */}
+      {/* Loading */}
       {loadingList && (
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="mb-3 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-            <p className="text-text-secondary">جاري التحميل...</p>
+            <p className="text-text-secondary">{t('aggregates_page.loading')}</p>
           </div>
         </div>
       )}
 
-      {/* ═══ Empty — No reports at all ═══ */}
+      {/* Empty — No reports at all */}
       {!loadingList && aggregates.length === 0 && (
         <Card padding="lg">
           <div className="border-2 border-dashed border-border rounded-lg p-12 text-center">
             <div className="mb-4 text-5xl">📋</div>
             <h3 className="mb-2 text-lg font-semibold text-text">
-              لا توجد تقارير تجميعية بعد
+              {t('aggregates_page.no_aggregates_title')}
             </h3>
             <p className="mb-6 text-sm text-text-secondary">
-              ابدأ بإنشاء تقرير تجميعي جديد لعرض زياراتك
+              {t('aggregates_page.no_aggregates_desc')}
             </p>
             <Button
               variant="primary"
@@ -499,13 +449,13 @@ export function AggregatesListPage() {
               icon={<span className="text-lg leading-none">+</span>}
               onClick={() => navigate('/aggregates/new')}
             >
-              إنشاء تقرير تجميعي
+              {t('aggregates_page.create_aggregate')}
             </Button>
           </div>
         </Card>
       )}
 
-      {/* ═══ Empty — No results after filter ═══ */}
+      {/* Empty — No results after filter */}
       {!loadingList &&
         aggregates.length > 0 &&
         filteredAggregates.length === 0 && (
@@ -513,19 +463,19 @@ export function AggregatesListPage() {
             <div className="border-2 border-dashed border-border rounded-lg p-12 text-center">
               <div className="mb-4 text-5xl">🔍</div>
               <h3 className="mb-2 text-lg font-semibold text-text">
-                لا توجد نتائج مطابقة
+                {t('aggregates_page.no_results_title')}
               </h3>
               <p className="mb-6 text-sm text-text-secondary">
-                جرّب تغيير الفلاتر أو البحث بكلمات مختلفة
+                {t('aggregates_page.no_results_desc')}
               </p>
               <Button variant="ghost" onClick={clearAllFilters}>
-                مسح جميع الفلاتر
+                {t('aggregates_page.clear_all_filters')}
               </Button>
             </div>
           </Card>
         )}
 
-      {/* ═══ List ═══ */}
+      {/* List */}
       {!loadingList && filteredAggregates.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredAggregates.map((aggregate) => {
@@ -538,12 +488,11 @@ export function AggregatesListPage() {
                 padding="lg"
                 className="transition-shadow hover:shadow-hard"
               >
-                {/* Header */}
                 <div className="mb-3 flex items-start justify-between">
                   <div className="flex-1">
                     <h3 className="font-semibold text-text">
                       {aggregate.aggregate_template?.name_ar ||
-                        'تقرير تجميعي'}
+                        t('aggregates_page.aggregate_report')}
                     </h3>
                     <p className="mt-0.5 text-xs font-medium text-info">
                       📍 {aggregate.entity?.name_ar || '—'}
@@ -559,14 +508,17 @@ export function AggregatesListPage() {
                         : 'bg-bg-secondary text-text-muted'
                     }`}
                   >
-                    {aggregate.status === 'active' ? 'نشط' : 'مؤرشف'}
+                    {aggregate.status === 'active'
+                      ? t('aggregates_page.status_active')
+                      : t('aggregates_page.status_archived')}
                   </span>
                 </div>
 
-                {/* Info */}
                 <div className="mb-4 space-y-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">المنطقة:</span>
+                    <span className="text-text-secondary">
+                      {t('aggregates_page.region_label')}
+                    </span>
                     <span className="inline-flex items-center gap-1 rounded-md bg-info/10 px-2 py-0.5 text-xs font-semibold text-info">
                       <span>📍</span>
                       {aggregate.entity?.name_ar || '—'}
@@ -574,32 +526,39 @@ export function AggregatesListPage() {
                   </div>
 
                   <div className="flex justify-between">
-                    <span className="text-text-secondary">الفترة:</span>
+                    <span className="text-text-secondary">
+                      {t('aggregates_page.period_label')}
+                    </span>
                     <span className="font-medium text-text">
                       {getPeriodTypeLabel(aggregate.period_type)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-text-secondary">من:</span>
+                    <span className="text-text-secondary">
+                      {t('aggregates_page.from_label')}
+                    </span>
                     <span className="font-medium text-text">
                       {formatDate(aggregate.period_start)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-text-secondary">إلى:</span>
+                    <span className="text-text-secondary">
+                      {t('aggregates_page.to_label')}
+                    </span>
                     <span className="font-medium text-text">
                       {formatDate(aggregate.period_end)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-text-secondary">عدد الزيارات:</span>
+                    <span className="text-text-secondary">
+                      {t('aggregates_page.visits_count')}
+                    </span>
                     <span className="font-medium text-primary">
                       {aggregate.source_count}
                     </span>
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div className="flex gap-2 border-t border-border pt-3">
                   <Button
                     variant="ghost"
@@ -607,7 +566,7 @@ export function AggregatesListPage() {
                     onClick={() => navigate(`/aggregates/${aggregate.id}`)}
                     className="flex-1"
                   >
-                    عرض
+                    {t('aggregates_page.view')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -617,7 +576,7 @@ export function AggregatesListPage() {
                     }
                     className="flex-1"
                   >
-                    تعديل
+                    {t('aggregates_page.edit')}
                   </Button>
 
                   {isTechSupport && (
@@ -629,13 +588,8 @@ export function AggregatesListPage() {
                           id: aggregate.id,
                           title:
                             aggregate.aggregate_template?.name_ar ||
-                            'تقرير تجميعي',
-                          type:
-                            reportType === 'RL'
-                              ? 'زيارات R.L'
-                              : reportType === 'TLS'
-                              ? 'زيارات TLS'
-                              : 'تقرير',
+                            t('aggregates_page.aggregate_report'),
+                          type: getReportTypeLabel(reportType),
                           creatorName:
                             aggregate.creator?.full_name || '—',
                           sourceCount: aggregate.source_count || 0,
@@ -643,7 +597,7 @@ export function AggregatesListPage() {
                       }
                       className="text-danger hover:bg-danger/10"
                     >
-                      حذف
+                      {t('aggregates_page.delete')}
                     </Button>
                   )}
                 </div>
@@ -653,7 +607,6 @@ export function AggregatesListPage() {
         </div>
       )}
 
-      {/* ═══ Delete Modal ═══ */}
       {deleteTarget && isTechSupport && (
         <DeleteAggregateModal
           isOpen={true}
@@ -672,10 +625,6 @@ export function AggregatesListPage() {
     </div>
   );
 }
-
-// ═══════════════════════════════════════════════════════════
-// QuickTabButton — زر التبويب السريع
-// ═══════════════════════════════════════════════════════════
 
 interface QuickTabButtonProps {
   active: boolean;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Home,
   FileText,
@@ -14,20 +15,19 @@ import {
   ChevronLeft,
   X,
   Upload,
-  Grid, // أيقونة جديدة للمصفوفة
+  Grid,
+  RotateCcw,
 } from 'lucide-react';
 import { useEntityStore } from '../../stores/entity-store';
+import { usePermission } from '../../hooks/usePermission';
 import type { RoleCode } from '../../types/app.types';
-
-// ═══════════════════════════════════════════════════════════
-// Types
-// ═══════════════════════════════════════════════════════════
 
 interface SidebarItem {
   id: string;
   label: string;
   icon: React.ReactNode;
   path: string;
+  permission?: string;
   roles?: RoleCode[];
   isSettings?: boolean;
 }
@@ -38,112 +38,30 @@ interface SettingsSubItem {
   icon: React.ReactNode;
   path: string;
   badge?: string;
+  permission?: string;
 }
 
 interface SidebarProps {
   open: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════
-// Menu Items
-// ═══════════════════════════════════════════════════════════
-
-const MENU_ITEMS: SidebarItem[] = [
-  {
-    id: 'home',
-    label: 'الرئيسية',
-    icon: <Home className="w-5 h-5" />,
-    path: '/dashboard',
-  },
-  {
-    id: 'reports',
-    label: 'تقاريري',
-    icon: <FileText className="w-5 h-5" />,
-    path: '/reports',
-  },
-  {
-    id: 'aggregates',
-    label: 'التقارير المجمّعة',
-    icon: <BarChart3 className="w-5 h-5" />,
-    path: '/aggregates',
-  },
-  {
-    id: 'notifications',
-    label: 'التنبيهات',
-    icon: <Bell className="w-5 h-5" />,
-    path: '/notifications',
-  },
-  {
-    id: 'settings',
-    label: 'الإعدادات',
-    icon: <Settings className="w-5 h-5" />,
-    path: '/settings',
-    roles: ['tech_support'],
-    isSettings: true,
-  },
-];
-
-const SETTINGS_SUB_ITEMS: SettingsSubItem[] = [
-  {
-    id: 'templates',
-    label: 'إعدادات القوالب',
-    icon: <LayoutTemplate className="w-4 h-4" />,
-    path: '/settings/templates',
-  },
-  {
-    id: 'notifications-admin',
-    label: 'إدارة التنبيهات',
-    icon: <Bell className="w-4 h-4" />,
-    path: '/settings/notifications',
-  },
-  {
-    id: 'users',
-    label: 'إدارة المستخدمين',
-    icon: <Users className="w-4 h-4" />,
-    path: '/settings/users',
-  },
-  {
-    id: 'entities',
-    label: 'إدارة الكيانات',
-    icon: <Building2 className="w-4 h-4" />,
-    path: '/settings/entities',
-  },
-  {
-    id: 'permissions',
-    label: 'الأدوار والصلاحيات',
-    icon: <Shield className="w-4 h-4" />,
-    path: '/settings/permissions',
-  },
-  {
-    id: 'roles-matrix',
-    label: 'مصفوفة الصلاحيات',
-    icon: <Grid className="w-4 h-4" />,
-    path: '/settings/roles',
-  },
-  {
-    id: 'bulk-import',
-    label: 'استيراد جماعي',
-    icon: <Upload className="w-4 h-4" />,
-    path: '/settings/permissions/bulk-import',
-    badge: 'Excel',
-  },
-  {
-    id: 'themes',
-    label: 'إدارة الثيمات',
-    icon: <Palette className="w-4 h-4" />,
-    path: '/settings/themes',
-  },
-];
-
-// ═══════════════════════════════════════════════════════════
-// Component
-// ═══════════════════════════════════════════════════════════
-
 export function Sidebar({ open }: SidebarProps) {
+  const { t } = useTranslation();
   const { activeEntity } = useEntityStore();
   const location = useLocation();
   const navigate = useNavigate();
   const userRole = activeEntity?.roleCode;
+
+  const { allowed: canManageThemes } = usePermission('themes.manage');
+  const { allowed: canManageUsers } = usePermission('users.manage');
+  const { allowed: canManageTemplates } = usePermission('templates.manage');
+  const { allowed: canManageSettings } = usePermission('settings.manage');
+
+  const canAccessSettings =
+    canManageThemes ||
+    canManageUsers ||
+    canManageTemplates ||
+    canManageSettings;
 
   const [settingsPopupOpen, setSettingsPopupOpen] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -157,10 +75,122 @@ export function Sidebar({ open }: SidebarProps) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // القوائم (تُترجم ديناميكياً)
+  const MENU_ITEMS: SidebarItem[] = [
+    {
+      id: 'home',
+      label: t('sidebar.home'),
+      icon: <Home className="w-5 h-5" />,
+      path: '/dashboard',
+    },
+    {
+      id: 'reports',
+      label: t('sidebar.reports'),
+      icon: <FileText className="w-5 h-5" />,
+      path: '/reports',
+    },
+    {
+      id: 'aggregates',
+      label: t('sidebar.aggregates'),
+      icon: <BarChart3 className="w-5 h-5" />,
+      path: '/aggregates',
+    },
+    {
+      id: 'notifications',
+      label: t('sidebar.notifications'),
+      icon: <Bell className="w-5 h-5" />,
+      path: '/notifications',
+    },
+    {
+      id: 'settings',
+      label: t('sidebar.settings'),
+      icon: <Settings className="w-5 h-5" />,
+      path: '/settings',
+      isSettings: true,
+    },
+  ];
+
+  const SETTINGS_SUB_ITEMS: SettingsSubItem[] = [
+    {
+      id: 'templates',
+      label: t('admin.templates'),
+      icon: <LayoutTemplate className="w-4 h-4" />,
+      path: '/settings/templates',
+    },
+    {
+      id: 'notifications-admin',
+      label: t('admin.notifications'),
+      icon: <Bell className="w-4 h-4" />,
+      path: '/settings/notifications',
+    },
+    {
+      id: 'users',
+      label: t('admin.users'),
+      icon: <Users className="w-4 h-4" />,
+      path: '/settings/users',
+    },
+    {
+      id: 'entities',
+      label: t('admin.entities'),
+      icon: <Building2 className="w-4 h-4" />,
+      path: '/settings/entities',
+    },
+    {
+      id: 'permissions',
+      label: t('admin.roles'),
+      icon: <Shield className="w-4 h-4" />,
+      path: '/settings/permissions',
+    },
+    {
+      id: 'roles-matrix',
+      label: t('settings.title'),
+      icon: <Grid className="w-4 h-4" />,
+      path: '/settings/roles',
+    },
+    {
+      id: 'bulk-import',
+      label: t('common.import'),
+      icon: <Upload className="w-4 h-4" />,
+      path: '/settings/permissions/bulk-import',
+      badge: 'Excel',
+    },
+    {
+      id: 'themes',
+      label: t('admin.themes'),
+      icon: <Palette className="w-4 h-4" />,
+      path: '/settings/themes',
+      permission: 'themes.manage',
+    },
+    {
+      id: 'themes-reset',
+      label: t('settings.reset_themes'),
+      icon: <RotateCcw className="w-4 h-4" />,
+      path: '/settings/themes/reset',
+      permission: 'users.manage',
+    },
+  ];
+
+  const isPermissionGranted = (permission?: string) => {
+    if (!permission) return true;
+    if (permission === 'themes.manage') return canManageThemes;
+    if (permission === 'users.manage') return canManageUsers;
+    if (permission === 'templates.manage') return canManageTemplates;
+    if (permission === 'settings.manage') return canManageSettings;
+    return true;
+  };
+
   const visibleItems = MENU_ITEMS.filter((item) => {
-    if (!item.roles || item.roles.length === 0) return true;
-    return userRole && item.roles.includes(userRole);
+    if (item.isSettings) return canAccessSettings;
+    if (item.permission && !isPermissionGranted(item.permission)) return false;
+    if (item.roles && item.roles.length > 0) {
+      return userRole && item.roles.includes(userRole);
+    }
+    return true;
   });
+
+  const visibleSubItems = SETTINGS_SUB_ITEMS.filter((sub) =>
+    isPermissionGranted(sub.permission)
+  );
 
   useEffect(() => {
     setSettingsPopupOpen(false);
@@ -178,18 +208,13 @@ export function Sidebar({ open }: SidebarProps) {
         setSettingsPopupOpen(false);
       }
     };
-
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setSettingsPopupOpen(false);
-      }
+      if (e.key === 'Escape') setSettingsPopupOpen(false);
     };
-
     if (settingsPopupOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleEscape);
     }
-
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
@@ -208,6 +233,7 @@ export function Sidebar({ open }: SidebarProps) {
 
   return (
     <>
+      {/* Mobile overlay */}
       {isMobile && open && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20"
@@ -215,19 +241,22 @@ export function Sidebar({ open }: SidebarProps) {
         />
       )}
 
-      <aside
+            <aside
         className={`
-          fixed top-16 bottom-0 right-0 bg-surface border-l border-border
+          fixed top-16 bottom-0 start-0 bg-surface border-e border-border
           transition-transform duration-300 ease-in-out z-30
           w-64
-          ${open ? 'translate-x-0' : 'translate-x-full'}
+          ${
+            open
+              ? 'translate-x-0'
+              : 'rtl:translate-x-full ltr:-translate-x-full'
+          }
         `}
       >
         <nav className="p-3 space-y-1 overflow-y-auto h-full pb-20">
           {visibleItems.map((item) => {
             if (item.isSettings) {
               const isActive = location.pathname.startsWith('/settings');
-
               return (
                 <button
                   key={item.id}
@@ -255,7 +284,6 @@ export function Sidebar({ open }: SidebarProps) {
                 </button>
               );
             }
-
             return (
               <NavLink
                 key={item.id}
@@ -286,6 +314,7 @@ export function Sidebar({ open }: SidebarProps) {
           </div>
         </div>
 
+        {/* Desktop popup */}
         {!isMobile && (
           <div
             ref={popupRef}
@@ -305,17 +334,15 @@ export function Sidebar({ open }: SidebarProps) {
               <div className="flex items-center gap-2">
                 <Settings className="w-4 h-4 text-primary" />
                 <span className="text-sm font-bold text-primary">
-                  الإعدادات
+                  {t('sidebar.settings')}
                 </span>
               </div>
             </div>
-
             <div className="py-2">
-              {SETTINGS_SUB_ITEMS.map((subItem) => {
+              {visibleSubItems.map((subItem) => {
                 const isActive =
                   location.pathname === subItem.path ||
                   location.pathname.startsWith(subItem.path + '/');
-
                 return (
                   <button
                     key={subItem.id}
@@ -347,6 +374,7 @@ export function Sidebar({ open }: SidebarProps) {
         )}
       </aside>
 
+      {/* Mobile bottom sheet */}
       {isMobile && settingsPopupOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
@@ -360,12 +388,11 @@ export function Sidebar({ open }: SidebarProps) {
             <div className="flex justify-center pt-3 pb-2">
               <div className="w-12 h-1 rounded-full bg-border" />
             </div>
-
             <div className="px-4 pb-3 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Settings className="w-5 h-5 text-primary" />
                 <span className="text-base font-bold text-primary">
-                  الإعدادات
+                  {t('sidebar.settings')}
                 </span>
               </div>
               <button
@@ -375,13 +402,11 @@ export function Sidebar({ open }: SidebarProps) {
                 <X className="w-5 h-5" />
               </button>
             </div>
-
             <div className="p-2">
-              {SETTINGS_SUB_ITEMS.map((subItem) => {
+              {visibleSubItems.map((subItem) => {
                 const isActive =
                   location.pathname === subItem.path ||
                   location.pathname.startsWith(subItem.path + '/');
-
                 return (
                   <button
                     key={subItem.id}

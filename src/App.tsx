@@ -6,8 +6,12 @@ import {
   Navigate,
   useLocation,
 } from 'react-router-dom';
+import { useTranslation } from 'react-i18next'; // ⭐ استيراد useTranslation
+import { supabase } from './lib/supabase'; // ⭐ استيراد supabase
+
 import { useAuthStore } from './stores/auth-store';
 import { useEntityStore } from './stores/entity-store';
+import { useThemeStore } from './stores/theme-store';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { MainLayout } from './components/layout/MainLayout';
 import { LoginPage } from './pages/auth/LoginPage';
@@ -55,15 +59,22 @@ import { NotificationChannelsPage } from './pages/admin/notifications/Notificati
 import { SendManualNotificationPage } from './pages/admin/notifications/SendManualNotificationPage';
 import { NotificationLogDetailPage } from './pages/admin/notifications/NotificationLogDetailPage';
 
-// ⭐⭐⭐ Permissions
+// ⭐ Permissions
 import { PermissionsDashboard } from './pages/permissions/PermissionsDashboard';
 import { BulkImportPage } from './pages/permissions/BulkImportPage';
 import { UserPermissionsPage } from './pages/permissions/UserPermissionsPage';
-import { RolesPage } from './pages/permissions/RolesPage'; // ← تم إضافة هذا
+import { RolesPage } from './pages/permissions/RolesPage';
 
-// ================================================
-// ⭐ AdminRedirect
-// ================================================
+// ⭐ Themes
+import ThemesPage from './pages/settings/ThemesPage';
+import ResetUserThemesPage from './pages/settings/ResetUserThemesPage';
+
+// ⭐ Profile
+import ProfilePage from './pages/profile/ProfilePage';
+
+// ═══════════════════════════════════════════════════════════
+// AdminRedirect
+// ═══════════════════════════════════════════════════════════
 
 function AdminRedirect() {
   const location = useLocation();
@@ -80,21 +91,54 @@ function App() {
     initialized: entitiesInitialized,
   } = useEntityStore();
 
+  const initTheme = useThemeStore((s) => s.init);
+  const { i18n } = useTranslation(); // ⭐ للتحكم في اللغة
+
+  // 1. تهيئة المصادقة
   useEffect(() => {
     initialize();
   }, [initialize]);
 
+  // 2. تحميل الكيانات
   useEffect(() => {
     if (user && !entitiesInitialized) {
       loadUserEntities(user.id);
     }
   }, [user, entitiesInitialized, loadUserEntities]);
 
+  // 3. تنظيف الكيانات عند تسجيل الخروج
   useEffect(() => {
     if (initialized && !user) {
       clearEntities();
     }
   }, [initialized, user, clearEntities]);
+
+  // 4. تطبيق الثيم بعد تسجيل الدخول
+  useEffect(() => {
+    if (user?.id) {
+      initTheme(user.id);
+    }
+  }, [user?.id, initTheme]);
+
+  // 5. ⭐ تحميل اللغة المفضلة من قاعدة البيانات عند تسجيل الدخول
+  useEffect(() => {
+    if (!user?.id) return;
+
+    (async () => {
+      const { data } = await supabase
+        .from('user_preferences')
+        .select('language')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      // نستخدم اللغة من قاعدة البيانات، أو اللغة المفضلة للمستخدم، أو العربية كافتراضي
+      const savedLang = data?.language || user.preferredLanguage || 'ar';
+
+      if (savedLang !== i18n.language) {
+        await i18n.changeLanguage(savedLang);
+      }
+    })();
+  }, [user?.id, user?.preferredLanguage, i18n]);
 
   if (!initialized) {
     return <Loading fullScreen message="جاري تحميل النظام..." />;
@@ -137,6 +181,9 @@ function App() {
           <Route path="/aggregates/:id" element={<ViewAggregatePage />} />
           <Route path="/aggregates/:id/edit" element={<EditAggregatePage />} />
 
+          {/* ⭐ Profile */}
+          <Route path="/profile" element={<ProfilePage />} />
+
           {/* ⭐ Settings */}
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<SettingsPage />} />
@@ -175,23 +222,17 @@ function App() {
             <Route path="entities/:id/edit" element={<EntityFormPage />} />
             <Route path="entities/:id" element={<EntityDetailPage />} />
 
-            {/* ⭐ Permissions */}
+            {/* Permissions */}
             <Route path="permissions" element={<PermissionsDashboard />} />
             <Route path="permissions/bulk-import" element={<BulkImportPage />} />
             <Route path="permissions/users/:id" element={<UserPermissionsPage />} />
-            
-            {/* ⭐ Roles (جديد) */}
+
+            {/* Roles */}
             <Route path="roles" element={<RolesPage />} />
 
             {/* Themes */}
-            <Route
-              path="themes"
-              element={
-                <div className="bg-surface border border-border rounded-xl p-12 text-center text-text-muted">
-                  🎨 إدارة الثيمات — قريباً
-                </div>
-              }
-            />
+            <Route path="themes" element={<ThemesPage />} />
+            <Route path="themes/reset" element={<ResetUserThemesPage />} />
           </Route>
 
           <Route path="/admin/*" element={<AdminRedirect />} />

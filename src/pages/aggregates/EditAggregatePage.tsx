@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowRight,
   Save,
@@ -25,6 +26,7 @@ import type {
 // ═══════════════════════════════════════════════════════════
 
 export function EditAggregatePage() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 
@@ -95,7 +97,7 @@ export function EditAggregatePage() {
   // ═══════════════════════════════════════════
 
   if (loadingDetail || !loaded) {
-    return <Loading message="جاري تحميل التقرير..." />;
+    return <Loading message={t('report_form.loading_report')} />;
   }
 
   if (error) {
@@ -105,7 +107,7 @@ export function EditAggregatePage() {
           <div className="flex items-start gap-3 text-danger">
             <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
             <div className="flex-1">
-              <h2 className="mb-1 font-bold">خطأ</h2>
+              <h2 className="mb-1 font-bold">{t('aggregate_form.error')}</h2>
               <p className="text-sm">{error}</p>
             </div>
           </div>
@@ -115,7 +117,7 @@ export function EditAggregatePage() {
           icon={<ArrowRight className="h-4 w-4" />}
           onClick={() => navigate('/aggregates')}
         >
-          عودة للتقارير
+          {t('aggregate_form.back_to_list')}
         </Button>
       </div>
     );
@@ -128,13 +130,13 @@ export function EditAggregatePage() {
           <div className="py-12 text-center">
             <div className="mb-4 text-6xl">📄</div>
             <h2 className="mb-2 text-xl font-bold text-text">
-              التقرير غير موجود
+              {t('aggregate_form.not_found')}
             </h2>
             <p className="mb-6 text-text-secondary">
-              قد يكون التقرير محذوفاً أو غير متاح
+              {t('aggregate_form.not_found_desc')}
             </p>
             <Button variant="primary" onClick={() => navigate('/aggregates')}>
-              عودة للتقارير
+              {t('aggregate_form.back_to_list')}
             </Button>
           </div>
         </Card>
@@ -163,20 +165,19 @@ export function EditAggregatePage() {
   const formatDate = (dateStr: string) => {
     if (!dateStr || dateStr === '—') return '—';
     try {
-      return new Date(dateStr).toLocaleDateString('ar-EG', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      });
+      return new Date(dateStr).toLocaleDateString(
+        i18n.language === 'ar' ? 'ar-EG' : 'en-US',
+        { day: 'numeric', month: 'long', year: 'numeric' }
+      );
     } catch {
       return dateStr;
     }
   };
 
   const periodTypeLabel = (() => {
-    if (periodType === 'biweekly') return 'نصف شهري';
-    if (periodType === 'monthly') return 'شهري';
-    if (periodType === 'custom') return 'مخصص';
+    if (periodType === 'biweekly') return t('aggregate_form.period_biweekly');
+    if (periodType === 'monthly') return t('aggregate_form.period_monthly');
+    if (periodType === 'custom') return t('aggregate_form.period_custom');
     return '—';
   })();
 
@@ -197,10 +198,10 @@ export function EditAggregatePage() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-text">
-              ✏️ تعديل التقرير التجميعي
+              ✏️ {t('aggregate_form.edit_title')}
             </h1>
             <p className="mt-1 text-sm text-text-secondary">
-              {currentAggregate.aggregate_template?.name_ar || 'تقرير تجميعي'}
+              {currentAggregate.aggregate_template?.name_ar || t('aggregates_page.aggregate_report')}
             </p>
           </div>
         </div>
@@ -210,7 +211,7 @@ export function EditAggregatePage() {
             variant="ghost"
             onClick={() => navigate(`/aggregates/${id}`)}
           >
-            إلغاء
+            {t('common.cancel')}
           </Button>
           <Button
             variant="primary"
@@ -219,7 +220,7 @@ export function EditAggregatePage() {
             disabled={saving}
             loading={saving}
           >
-            حفظ التعديلات
+            {t('aggregate_form.save_changes')}
           </Button>
         </div>
       </div>
@@ -229,8 +230,7 @@ export function EditAggregatePage() {
         <div className="flex items-start gap-2 text-sm text-info">
           <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <span>
-            يمكنك تعديل الأنشطة الإشرافية فقط. الزيارات مرتبطة بتقارير
-            المنشأ ولا يمكن تعديلها من هنا.
+            {t('aggregate_form.edit_subtitle')}
           </span>
         </div>
       </Card>
@@ -250,18 +250,18 @@ export function EditAggregatePage() {
         <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
           <div className="flex items-center gap-2">
             <UserIcon className="h-4 w-4 text-text-muted" />
-            <span className="text-text-secondary">المختص:</span>
+            <span className="text-text-secondary">{t('aggregate_form.specialist')}</span>
             <span className="font-medium text-text">{specialistName}</span>
           </div>
           <div className="flex items-center gap-2">
             <Building2 className="h-4 w-4 text-text-muted" />
-            <span className="text-text-secondary">المنطقة:</span>
+            <span className="text-text-secondary">{t('aggregate_form.region')}</span>
             <span className="font-medium text-text">{regionName}</span>
           </div>
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-text-muted" />
             <span className="text-text-secondary">
-              الفترة ({periodTypeLabel}):
+              {t('aggregate_view.period', { type: periodTypeLabel })}
             </span>
             <span className="font-medium text-text">
               {formatDate(periodStart)} → {formatDate(periodEnd)}
@@ -269,9 +269,9 @@ export function EditAggregatePage() {
           </div>
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-text-muted" />
-            <span className="text-text-secondary">النوع:</span>
+            <span className="text-text-secondary">{t('reports_page.report_type')}:</span>
             <span className="font-medium text-text">
-              {reportType === 'RL' ? 'زيارات R.L' : 'زيارات TLS'}
+              {reportType === 'RL' ? t('aggregates_page.report_type_rl') : t('aggregates_page.report_type_tls')}
             </span>
           </div>
         </div>
@@ -282,10 +282,10 @@ export function EditAggregatePage() {
         <div className="mb-4 flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-lg font-semibold text-text">
             <FileText className="h-5 w-5 text-info" />
-            أولاً: الزيارات
+            {t('aggregate_form.visits_section')}
           </h3>
           <span className="rounded-full bg-bg-secondary px-3 py-1 text-xs text-text-muted">
-            للعرض فقط
+            {t('aggregate_form.read_only')}
           </span>
         </div>
 
@@ -297,10 +297,10 @@ export function EditAggregatePage() {
         <div className="mb-4 flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-lg font-semibold text-text">
             <Sparkles className="h-5 w-5 text-warning" />
-            ثانياً: أنشطة إشرافية أخرى
+            {t('aggregate_form.activities_section')}
           </h3>
           <span className="rounded-full bg-warning/10 px-3 py-1 text-xs text-warning">
-            قابل للتعديل
+            {t('aggregate_form.editable')}
           </span>
         </div>
 
@@ -316,7 +316,7 @@ export function EditAggregatePage() {
           variant="ghost"
           onClick={() => navigate(`/aggregates/${id}`)}
         >
-          إلغاء
+          {t('common.cancel')}
         </Button>
         <Button
           variant="primary"
@@ -326,7 +326,7 @@ export function EditAggregatePage() {
           disabled={saving}
           loading={saving}
         >
-          حفظ التعديلات
+          {t('aggregate_form.save_changes')}
         </Button>
       </div>
     </div>

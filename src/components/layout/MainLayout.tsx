@@ -8,7 +8,7 @@ export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  // ⭐ كشف حجم الشاشة
+  // كشف حجم الشاشة
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 640);
     checkMobile();
@@ -16,7 +16,7 @@ export function MainLayout() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // ⭐ فتح Sidebar تلقائياً على سطح المكتب
+  // فتح/إغلاق Sidebar تلقائياً حسب حجم الشاشة
   useEffect(() => {
     if (!isMobile) {
       setSidebarOpen(true);
@@ -25,7 +25,7 @@ export function MainLayout() {
     }
   }, [isMobile]);
 
-  // ⭐ إغلاق Sidebar عند تغيير الصفحة على الموبايل
+  // إغلاق Sidebar عند تغيير الصفحة على الموبايل
   useEffect(() => {
     if (isMobile) {
       setSidebarOpen(false);
@@ -35,24 +35,28 @@ export function MainLayout() {
   const toggleSidebar = () => setSidebarOpen((v) => !v);
 
   return (
-    <div className="min-h-screen bg-bg-secondary">
-      {/* 🔒 Topbar — مخفي عند الطباعة */}
+    <>
+      {/* 🔒 Topbar — ثابت في الأعلى */}
       <div className="print:hidden">
         <Topbar onToggleSidebar={toggleSidebar} />
+      </div>
+
+      {/* Sidebar — ثابتة تحت Topbar */}
+      <div className="print:hidden">
         <Sidebar open={sidebarOpen} />
       </div>
 
-      {/* Main Content */}
+      {/* Main Content — يبدأ أسفل Topbar */}
       <main
         className={`
           pt-16 min-h-screen transition-all duration-300
           print:pt-0
           ${
             isMobile
-              ? 'pr-0'
+              ? 'px-0'
               : sidebarOpen
-              ? 'pr-64 print:pr-0'
-              : 'pr-16 print:pr-0'
+              ? 'ps-64 print:ps-0'  // ps = padding-inline-start (يتبع الاتجاه)
+              : 'ps-16 print:ps-0'
           }
         `}
       >
@@ -60,6 +64,6 @@ export function MainLayout() {
           <Outlet />
         </div>
       </main>
-    </div>
+    </>
   );
 }

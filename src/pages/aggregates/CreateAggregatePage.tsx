@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowRight,
   Calendar,
@@ -28,6 +29,7 @@ import type { PeriodType, ManualActivityRow } from '../../types/aggregates';
 // ═══════════════════════════════════════════════════════════
 
 export function CreateAggregatePage() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { activeEntity } = useEntityStore();
@@ -165,7 +167,7 @@ export function CreateAggregatePage() {
   // ═══════════════════════════════════════════
 
   if (loadingTemplates && step === 'select') {
-    return <Loading message="جاري تحميل القوالب..." />;
+    return <Loading message={t('aggregate_form.loading_templates')} />;
   }
 
   // ═══════════════════════════════════════════
@@ -185,10 +187,10 @@ export function CreateAggregatePage() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-text">
-              📊 إنشاء تقرير تجميعي
+              📊 {t('aggregate_form.create_title')}
             </h1>
             <p className="mt-1 text-sm text-text-secondary">
-              اختر نوع التجميع الذي تريد إنشاءه
+              {t('aggregate_form.create_subtitle')}
             </p>
           </div>
         </div>
@@ -199,10 +201,10 @@ export function CreateAggregatePage() {
             <div className="py-12 text-center">
               <div className="mb-4 text-6xl">📋</div>
               <h2 className="mb-2 text-xl font-bold text-text">
-                لا توجد قوالب تجميعية متاحة
+                {t('aggregate_form.no_templates')}
               </h2>
               <p className="text-text-secondary">
-                تواصل مع الدعم الفني لمنحك صلاحية التجميع
+                {t('aggregate_form.no_templates_desc')}
               </p>
             </div>
           </Card>
@@ -250,7 +252,7 @@ export function CreateAggregatePage() {
                             : 'bg-success/10 text-success'
                         }`}
                       >
-                        {reportType === 'RL' ? 'زيارات R.L' : 'زيارات TLS'}
+                        {reportType === 'RL' ? t('aggregates_page.report_type_rl') : t('aggregates_page.report_type_tls')}
                       </span>
                       <span className="text-text-muted">
                         {calcs?.entity_label}
@@ -258,7 +260,7 @@ export function CreateAggregatePage() {
                     </div>
 
                     <div className="mt-4 flex items-center justify-end gap-2 text-sm font-medium text-primary">
-                      <span>اختيار</span>
+                      <span>{t('aggregate_form.choose')}</span>
                       <ArrowRight className="h-4 w-4 rotate-180" />
                     </div>
                   </Card>
@@ -276,7 +278,7 @@ export function CreateAggregatePage() {
   // ═══════════════════════════════════════════
 
   if (!selectedTemplate) {
-    return <Loading message="جاري التحضير..." />;
+    return <Loading message={t('aggregate_form.preparing')} />;
   }
 
   const calcs = selectedTemplate.calculations;
@@ -307,14 +309,14 @@ export function CreateAggregatePage() {
                 {selectedTemplate.name_ar}
               </h1>
               <p className="mt-1 text-sm text-text-secondary">
-                حدد الفترة الزمنية للتقرير
+                {t('aggregate_form.period_title')}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={() => navigate('/aggregates')}>
-              إلغاء
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
@@ -323,7 +325,7 @@ export function CreateAggregatePage() {
               disabled={!canCreate}
               loading={loadingVisits}
             >
-              إنشاء التقرير
+              {t('reports_page.create_report')}
             </Button>
           </div>
         </div>
@@ -342,21 +344,21 @@ export function CreateAggregatePage() {
         <Card padding="lg">
           <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
             <Calendar className="h-5 w-5 text-primary" />
-            فترة التقرير
+            {t('aggregate_form.period_title')}
           </h3>
 
           {/* Period Type */}
           <div className="mb-4">
             <label className="mb-2 block text-sm font-medium text-text">
-              نوع الفترة
+              {t('aggregate_form.period_type')}
             </label>
             <div className="flex flex-wrap gap-2">
               {(['biweekly', 'monthly', 'custom'] as PeriodType[]).map(
                 (type) => {
                   const labels: Record<PeriodType, string> = {
-                    biweekly: 'نصف شهري',
-                    monthly: 'شهري',
-                    custom: 'مخصص',
+                    biweekly: t('aggregate_form.period_biweekly'),
+                    monthly: t('aggregate_form.period_monthly'),
+                    custom: t('aggregate_form.period_custom'),
                   };
                   const active = periodType === type;
                   return (
@@ -382,7 +384,7 @@ export function CreateAggregatePage() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-2 block text-sm font-medium text-text">
-                  من تاريخ
+                  {t('aggregate_form.from_date')}
                 </label>
                 <input
                   type="date"
@@ -395,7 +397,7 @@ export function CreateAggregatePage() {
               </div>
               <div>
                 <label className="mb-2 block text-sm font-medium text-text">
-                  إلى تاريخ
+                  {t('aggregate_form.to_date')}
                 </label>
                 <input
                   type="date"
@@ -426,11 +428,11 @@ export function CreateAggregatePage() {
                 )}
                 <div className="flex-1">
                   <p className="mb-1 text-sm font-medium text-text">
-                    الفترة الزمنية:
+                    {t('aggregate_form.period_info')}
                   </p>
                   <p className="text-sm text-text-secondary">
                     {periodComplete
-                      ? `من ${calculatedPeriod.start} إلى ${calculatedPeriod.end}`
+                      ? t('aggregate_form.period_from_to', { start: calculatedPeriod.start, end: calculatedPeriod.end })
                       : calculatedPeriod.label}
                   </p>
                 </div>
@@ -446,20 +448,15 @@ export function CreateAggregatePage() {
               <AlertCircle className="mt-0.5 h-6 w-6 flex-shrink-0 text-warning" />
               <div className="flex-1">
                 <h3 className="mb-2 text-base font-bold text-text">
-                  ⚠️ يوجد تقرير تجميعي لهذه الفترة مسبقاً
+                  {t('aggregate_form.existing_warning')}
                 </h3>
                 <p className="mb-4 text-sm text-text-secondary">
-                  تم إنشاء تقرير تجميعي لهذه الفترة بتاريخ{' '}
-                  <span className="font-medium text-text">
-                    {new Date(existingAggregate.created_at).toLocaleDateString(
-                      'ar-EG',
-                      {
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric',
-                      }
-                    )}
-                  </span>
+                  {t('aggregate_form.existing_desc', {
+                    date: new Date(existingAggregate.created_at).toLocaleDateString(
+                      i18n.language === 'ar' ? 'ar-EG' : 'en-US',
+                      { day: 'numeric', month: 'long', year: 'numeric' }
+                    )
+                  })}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -467,13 +464,13 @@ export function CreateAggregatePage() {
                     icon={<ExternalLink className="h-4 w-4" />}
                     onClick={handleOpenExisting}
                   >
-                    فتح التقرير الموجود
+                    {t('aggregate_form.open_existing')}
                   </Button>
                   <Button
                     variant="ghost"
                     onClick={clearExistingAggregate}
                   >
-                    إلغاء
+                    {t('common.cancel')}
                   </Button>
                 </div>
               </div>
@@ -486,8 +483,7 @@ export function CreateAggregatePage() {
           <div className="flex items-start gap-2 text-sm">
             <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
             <p className="text-text-secondary">
-              عند الضغط على "إنشاء التقرير" سيقوم النظام بجلب جميع الزيارات
-              التي وقعت ضمن الفترة المحددة تلقائياً.
+              {t('aggregate_form.info_box')}
             </p>
           </div>
         </Card>
@@ -515,14 +511,14 @@ export function CreateAggregatePage() {
               {selectedTemplate.name_ar}
             </h1>
             <p className="mt-1 text-sm text-text-secondary">
-              راجع الزيارات وأضف الأنشطة الإشرافية
+              {t('aggregate_form.edit_subtitle')}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={() => navigate('/aggregates')}>
-            إلغاء
+            {t('common.cancel')}
           </Button>
           <Button
             variant="primary"
@@ -531,7 +527,7 @@ export function CreateAggregatePage() {
             disabled={saving}
             loading={saving}
           >
-            حفظ التقرير
+            {t('aggregate_form.save_report')}
           </Button>
         </div>
       </div>
@@ -552,7 +548,7 @@ export function CreateAggregatePage() {
           <div className="flex items-center gap-2 text-sm text-success">
             <CheckCircle className="h-4 w-4 flex-shrink-0" />
             <span>
-              تم جلب الزيارات بنجاح — {visits.length} زيارة في الفترة المحددة
+              {t('aggregate_form.visits_fetched', { count: visits.length })}
             </span>
           </div>
         </Card>
@@ -564,21 +560,21 @@ export function CreateAggregatePage() {
           <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-text-muted" />
-              <span className="text-text-secondary">الفترة:</span>
+              <span className="text-text-secondary">{t('aggregate_form.period_title')}:</span>
               <span className="font-medium text-text">
                 {calculatedPeriod.start} → {calculatedPeriod.end}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <UserIcon className="h-4 w-4 text-text-muted" />
-              <span className="text-text-secondary">المختص:</span>
+              <span className="text-text-secondary">{t('aggregate_form.specialist')}</span>
               <span className="font-medium text-text">
                 {user?.fullName || '—'}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <Building2 className="h-4 w-4 text-text-muted" />
-              <span className="text-text-secondary">المنطقة:</span>
+              <span className="text-text-secondary">{t('aggregate_form.region')}</span>
               <span className="font-medium text-text">
                 {activeEntity?.entityName || '—'}
               </span>
@@ -591,7 +587,7 @@ export function CreateAggregatePage() {
       <Card padding="lg">
         <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
           <FileText className="h-5 w-5 text-info" />
-          أولاً: الزيارات
+          {t('aggregate_form.visits_section')}
         </h3>
 
         <VisitsTable
@@ -605,7 +601,7 @@ export function CreateAggregatePage() {
       <Card padding="lg">
         <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
           <Sparkles className="h-5 w-5 text-warning" />
-          ثانياً: أنشطة إشرافية أخرى
+          {t('aggregate_form.activities_section')}
         </h3>
 
         <ManualActivitiesTable
@@ -619,7 +615,7 @@ export function CreateAggregatePage() {
       {/* Bottom Actions */}
       <div className="flex items-center justify-end gap-3 pt-2">
         <Button variant="ghost" onClick={() => navigate('/aggregates')}>
-          إلغاء
+          {t('common.cancel')}
         </Button>
         <Button
           variant="primary"
@@ -629,7 +625,7 @@ export function CreateAggregatePage() {
           disabled={saving}
           loading={saving}
         >
-          حفظ التقرير التجميعي
+          {t('aggregate_form.save_report')}
         </Button>
       </div>
     </div>

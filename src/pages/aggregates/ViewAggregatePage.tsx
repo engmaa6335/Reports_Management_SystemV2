@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowRight,
   Printer,
@@ -33,6 +34,7 @@ const breakableCellStyle: React.CSSProperties = {
 };
 
 export function ViewAggregatePage() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const printRef = useRef<HTMLDivElement>(null);
@@ -69,7 +71,7 @@ export function ViewAggregatePage() {
   // ═══════════════════════════════════════════
 
   if (loadingDetail) {
-    return <Loading message="جاري تحميل التقرير..." />;
+    return <Loading message={t('report_form.loading_report')} />;
   }
 
   if (error) {
@@ -79,7 +81,7 @@ export function ViewAggregatePage() {
           <div className="flex items-start gap-3 text-danger">
             <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
             <div className="flex-1">
-              <h2 className="mb-1 font-bold">خطأ في تحميل التقرير</h2>
+              <h2 className="mb-1 font-bold">{t('aggregate_view.error_loading')}</h2>
               <p className="text-sm">{error}</p>
             </div>
           </div>
@@ -89,7 +91,7 @@ export function ViewAggregatePage() {
           icon={<ArrowRight className="h-4 w-4" />}
           onClick={() => navigate('/aggregates')}
         >
-          عودة للتقارير
+          {t('aggregate_form.back_to_list')}
         </Button>
       </div>
     );
@@ -102,16 +104,16 @@ export function ViewAggregatePage() {
           <div className="py-12 text-center">
             <div className="mb-4 text-6xl">📄</div>
             <h2 className="mb-2 text-xl font-bold text-text">
-              التقرير غير موجود
+              {t('aggregate_form.not_found')}
             </h2>
             <p className="mb-6 text-text-secondary">
-              قد يكون التقرير محذوفاً أو غير متاح
+              {t('aggregate_form.not_found_desc')}
             </p>
             <Button
               variant="primary"
               onClick={() => navigate('/aggregates')}
             >
-              عودة للتقارير
+              {t('aggregate_form.back_to_list')}
             </Button>
           </div>
         </Card>
@@ -145,20 +147,19 @@ export function ViewAggregatePage() {
   const formatDate = (dateStr: string) => {
     if (!dateStr || dateStr === '—') return '—';
     try {
-      return new Date(dateStr).toLocaleDateString('ar-EG', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      });
+      return new Date(dateStr).toLocaleDateString(
+        i18n.language === 'ar' ? 'ar-EG' : 'en-US',
+        { day: 'numeric', month: 'long', year: 'numeric' }
+      );
     } catch {
       return dateStr;
     }
   };
 
   const periodTypeLabel = (() => {
-    if (periodType === 'biweekly') return 'نصف شهري';
-    if (periodType === 'monthly') return 'شهري';
-    if (periodType === 'custom') return 'مخصص';
+    if (periodType === 'biweekly') return t('aggregate_form.period_biweekly');
+    if (periodType === 'monthly') return t('aggregate_form.period_monthly');
+    if (periodType === 'custom') return t('aggregate_form.period_custom');
     return '—';
   })();
 
@@ -179,10 +180,10 @@ export function ViewAggregatePage() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-text">
-              عرض التقرير التجميعي
+              {t('aggregate_view.view_title')}
             </h1>
             <p className="mt-1 text-sm text-text-secondary">
-              يمكنك الطباعة أو التعديل
+              {t('aggregate_view.view_subtitle')}
             </p>
           </div>
         </div>
@@ -193,14 +194,14 @@ export function ViewAggregatePage() {
             icon={<Edit className="h-4 w-4" />}
             onClick={() => navigate(`/aggregates/${id}/edit`)}
           >
-            تعديل
+            {t('aggregate_view.edit')}
           </Button>
           <Button
             variant="primary"
             icon={<Printer className="h-4 w-4" />}
             onClick={handlePrint}
           >
-            طباعة / PDF
+            {t('aggregate_view.print_pdf')}
           </Button>
         </div>
       </div>
@@ -211,12 +212,12 @@ export function ViewAggregatePage() {
           {/* ═══ Header ═══ */}
           <div className="mb-8 border-b-2 border-border pb-6 text-center">
             <h1 className="mb-2 text-2xl font-bold text-text">
-              التقرير التجميعي للمختص التربوي
+              {t('aggregate_view.title')}
             </h1>
             <h2 className="text-lg font-semibold text-primary">
               {reportType === 'RL'
-                ? 'زيارات R.L'
-                : 'زيارات TLS (مساحات التعلم)'}
+                ? t('aggregate_view.rl_visits')
+                : t('aggregate_view.tls_visits')}
             </h2>
           </div>
 
@@ -227,7 +228,7 @@ export function ViewAggregatePage() {
                 <UserIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-muted" />
                 <div className="flex-1">
                   <span className="text-xs text-text-muted">
-                    المختص التربوي:
+                    {t('aggregate_view.specialist')}
                   </span>
                   <p className="font-medium text-text">{specialistName}</p>
                 </div>
@@ -235,7 +236,7 @@ export function ViewAggregatePage() {
               <div className="flex items-start gap-2">
                 <FileText className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-muted" />
                 <div className="flex-1">
-                  <span className="text-xs text-text-muted">التخصص:</span>
+                  <span className="text-xs text-text-muted">{t('aggregate_view.specialization')}</span>
                   <p className="font-medium text-text">{specialization}</p>
                 </div>
               </div>
@@ -246,7 +247,7 @@ export function ViewAggregatePage() {
                 <Building2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-muted" />
                 <div className="flex-1">
                   <span className="text-xs text-text-muted">
-                    المنطقة التعليمية:
+                    {t('aggregate_view.region')}
                   </span>
                   <p className="font-medium text-text">{regionName}</p>
                 </div>
@@ -255,10 +256,10 @@ export function ViewAggregatePage() {
                 <Calendar className="mt-0.5 h-4 w-4 flex-shrink-0 text-text-muted" />
                 <div className="flex-1">
                   <span className="text-xs text-text-muted">
-                    الفترة ({periodTypeLabel}):
+                    {t('aggregate_view.period', { type: periodTypeLabel })}
                   </span>
                   <p className="font-medium text-text">
-                    من {formatDate(periodStart)} إلى {formatDate(periodEnd)}
+                    {t('aggregate_view.period_from_to', { start: formatDate(periodStart), end: formatDate(periodEnd) })}
                   </p>
                 </div>
               </div>
@@ -272,7 +273,7 @@ export function ViewAggregatePage() {
                 {visits.length}
               </div>
               <div className="mt-1 text-xs text-text-secondary">
-                عدد الزيارات الكلية
+                {t('aggregate_view.total_visits')}
               </div>
             </div>
             <div className="rounded-lg border border-info/20 bg-info/5 p-4 text-center">
@@ -280,7 +281,7 @@ export function ViewAggregatePage() {
                 {manualActivities.length}
               </div>
               <div className="mt-1 text-xs text-text-secondary">
-                الأنشطة الإشرافية
+                {t('aggregate_view.total_activities')}
               </div>
             </div>
           </div>
@@ -289,7 +290,7 @@ export function ViewAggregatePage() {
           <div className="mb-8">
             <h3 className="mb-4 flex items-center gap-2 border-r-4 border-primary pr-3 text-lg font-bold text-text">
               <FileText className="h-5 w-5 text-primary" />
-              أولاً: الزيارات
+              {t('aggregate_view.visits_section')}
             </h3>
 
             <VisitsTable visits={visits} entityLabel={entityLabel} />
@@ -299,13 +300,13 @@ export function ViewAggregatePage() {
           <div className="mb-8">
             <h3 className="mb-4 flex items-center gap-2 border-r-4 border-warning pr-3 text-lg font-bold text-text">
               <Sparkles className="h-5 w-5 text-warning" />
-              ثانياً: أنشطة إشرافية أخرى
+              {t('aggregate_view.activities_section')}
             </h3>
 
             {manualActivities.length === 0 ? (
               <div className="rounded-lg border-2 border-dashed border-border bg-bg-secondary p-6 text-center">
                 <p className="text-sm text-text-muted">
-                  لا توجد أنشطة إشرافية أخرى
+                  {t('aggregate_view.no_activities')}
                 </p>
               </div>
             ) : (
@@ -314,19 +315,19 @@ export function ViewAggregatePage() {
                   <thead>
                     <tr className="border-b-2 border-border bg-bg-secondary">
                       <th className="w-10 px-2 py-3 text-center font-bold text-text">
-                        م
+                        {t('aggregate_view.col_num')}
                       </th>
                       <th className="w-28 px-2 py-3 text-center font-bold text-text">
-                        التاريخ
+                        {t('aggregate_view.col_date')}
                       </th>
                       <th className="px-2 py-3 text-right font-bold text-text">
-                        النشاط
+                        {t('aggregate_view.col_activity')}
                       </th>
                       <th className="px-2 py-3 text-right font-bold text-text">
-                        الموضوع
+                        {t('aggregate_view.col_topic')}
                       </th>
                       <th className="px-2 py-3 text-right font-bold text-text">
-                        الفئة المستهدفة
+                        {t('aggregate_view.col_target')}
                       </th>
                     </tr>
                   </thead>
@@ -376,7 +377,7 @@ export function ViewAggregatePage() {
           <div className="mt-12 grid grid-cols-2 gap-8 border-t-2 border-border pt-8">
             <div className="text-center">
               <p className="mb-12 text-sm font-medium text-text-secondary">
-                المختص التربوي
+                {t('aggregate_view.signature_specialist')}
               </p>
               <div className="border-t border-border pt-2">
                 <p className="text-sm font-medium text-text">
@@ -386,7 +387,7 @@ export function ViewAggregatePage() {
             </div>
             <div className="text-center">
               <p className="mb-12 text-sm font-medium text-text-secondary">
-                مدير المنطقة التعليمية
+                {t('aggregate_view.signature_manager')}
               </p>
               <div className="border-t border-border pt-2">
                 <p className="text-sm font-medium text-text-muted">
@@ -399,15 +400,12 @@ export function ViewAggregatePage() {
           {/* ═══ Print Footer ═══ */}
           <div className="mt-8 border-t border-border pt-4 text-center text-xs text-text-muted">
             <p>
-              تم إنشاء هذا التقرير بتاريخ{' '}
-              {new Date(currentAggregate.created_at).toLocaleDateString(
-                'ar-EG',
-                {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                }
-              )}
+              {t('aggregate_view.created_at', {
+                date: new Date(currentAggregate.created_at).toLocaleDateString(
+                  i18n.language === 'ar' ? 'ar-EG' : 'en-US',
+                  { day: 'numeric', month: 'long', year: 'numeric' }
+                )
+              })}
             </p>
           </div>
         </Card>
@@ -416,7 +414,7 @@ export function ViewAggregatePage() {
       {/* ═══ Bottom Actions (لا يُطبع) ═══ */}
       <div className="flex items-center justify-end gap-3 pt-2 print:hidden">
         <Button variant="ghost" onClick={() => navigate('/aggregates')}>
-          عودة للتقارير
+          {t('aggregate_form.back_to_list')}
         </Button>
         <Button
           variant="primary"
@@ -424,7 +422,7 @@ export function ViewAggregatePage() {
           icon={<Printer className="h-5 w-5" />}
           onClick={handlePrint}
         >
-          طباعة / PDF
+          {t('aggregate_view.print_pdf')}
         </Button>
       </div>
     </div>

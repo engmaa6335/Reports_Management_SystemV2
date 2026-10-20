@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Bell,
   CheckCheck,
@@ -21,10 +22,10 @@ import { Loading } from '../../components/ui/Loading';
 // Helpers
 // ================================================
 
-function formatDateTime(dateStr: string): string {
+function formatDateTime(dateStr: string, lang: string): string {
   try {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('ar-EG', {
+    return date.toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -36,7 +37,7 @@ function formatDateTime(dateStr: string): string {
   }
 }
 
-function timeAgo(dateStr: string): string {
+function timeAgo(dateStr: string, t: (key: string, opts?: any) => string): string {
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -44,12 +45,12 @@ function timeAgo(dateStr: string): string {
   const diffHour = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHour / 24);
 
-  if (diffMin < 1) return 'الآن';
-  if (diffMin < 60) return `منذ ${diffMin} دقيقة`;
-  if (diffHour < 24) return `منذ ${diffHour} ساعة`;
-  if (diffDay < 7) return `منذ ${diffDay} يوم`;
-  if (diffDay < 30) return `منذ ${Math.floor(diffDay / 7)} أسبوع`;
-  return formatDateTime(dateStr);
+  if (diffMin < 1) return t('notifications_page.time_now');
+  if (diffMin < 60) return t('notifications_page.time_minutes', { count: diffMin });
+  if (diffHour < 24) return t('notifications_page.time_hours', { count: diffHour });
+  if (diffDay < 7) return t('notifications_page.time_days', { count: diffDay });
+  if (diffDay < 30) return t('notifications_page.time_weeks', { count: Math.floor(diffDay / 7) });
+  return formatDateTime(dateStr, 'ar');
 }
 
 function getIconForCategory(category: string | null) {
@@ -72,25 +73,25 @@ function getIconColor(category: string | null): string {
   return colors[category || 'custom'] || 'bg-primary/10 text-primary';
 }
 
-function getPriorityBadge(priority: string): {
+function getPriorityBadge(priority: string, t: (key: string) => string): {
   label: string;
   className: string;
 } {
   const badges: Record<string, { label: string; className: string }> = {
     low: {
-      label: 'منخفضة',
+      label: t('notifications_page.priority_low'),
       className: 'bg-text-muted/10 text-text-muted',
     },
     normal: {
-      label: 'عادية',
+      label: t('notifications_page.priority_normal'),
       className: 'bg-info/10 text-info',
     },
     high: {
-      label: 'عالية',
+      label: t('notifications_page.priority_high'),
       className: 'bg-warning/10 text-warning',
     },
     urgent: {
-      label: 'عاجلة',
+      label: t('notifications_page.priority_urgent'),
       className: 'bg-danger/10 text-danger',
     },
   };
@@ -109,6 +110,7 @@ type FilterTab = 'all' | 'unread' | 'report' | 'aggregate' | 'admin';
 // ================================================
 
 export function NotificationsPage() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const {
@@ -230,7 +232,7 @@ export function NotificationsPage() {
   // Render — Loading
   // ================================================
   if (loading && notifications.length === 0) {
-    return <Loading message="جاري تحميل التنبيهات..." />;
+    return <Loading message={t('notifications_page.loading')} />;
   }
 
   // ================================================
@@ -242,17 +244,17 @@ export function NotificationsPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text flex items-center gap-2">
-            🔔 التنبيهات
+            🔔 {t('notifications_page.title')}
             {unreadCount > 0 && (
               <span className="px-3 py-1 bg-danger text-white text-sm font-bold rounded-full">
-                {unreadCount} جديد
+                {t('notifications_page.unread_badge', { count: unreadCount })}
               </span>
             )}
           </h1>
           <p className="text-text-secondary mt-1">
             {unreadCount > 0
-              ? `لديك ${unreadCount} تنبيه غير مقروء`
-              : 'لا توجد تنبيهات غير مقروءة'}
+              ? t('notifications_page.unread_desc', { count: unreadCount })
+              : t('notifications_page.all_read_desc')}
           </p>
         </div>
 
@@ -262,7 +264,7 @@ export function NotificationsPage() {
             icon={<CheckCheck className="w-4 h-4" />}
             onClick={handleMarkAllRead}
           >
-            تحديد الكل كمقروء
+            {t('notifications_page.mark_all_read')}
           </Button>
         )}
       </div>
@@ -275,31 +277,31 @@ export function NotificationsPage() {
             <TabButton
               active={activeTab === 'all'}
               onClick={() => setActiveTab('all')}
-              label="الكل"
+              label={t('notifications_page.tab_all')}
               count={tabCounts.all}
             />
             <TabButton
               active={activeTab === 'unread'}
               onClick={() => setActiveTab('unread')}
-              label="غير مقروءة"
+              label={t('notifications_page.tab_unread')}
               count={tabCounts.unread}
             />
             <TabButton
               active={activeTab === 'report'}
               onClick={() => setActiveTab('report')}
-              label="📄 تقارير"
+              label={t('notifications_page.tab_report')}
               count={tabCounts.report}
             />
             <TabButton
               active={activeTab === 'aggregate'}
               onClick={() => setActiveTab('aggregate')}
-              label="📊 تجميعية"
+              label={t('notifications_page.tab_aggregate')}
               count={tabCounts.aggregate}
             />
             <TabButton
               active={activeTab === 'admin'}
               onClick={() => setActiveTab('admin')}
-              label="🛡️ نظام"
+              label={t('notifications_page.tab_admin')}
               count={tabCounts.admin}
             />
           </div>
@@ -309,7 +311,7 @@ export function NotificationsPage() {
         <div className="p-4 flex items-center gap-3">
           <div className="flex-1">
             <Input
-              placeholder="ابحث في التنبيهات..."
+              placeholder={t('notifications_page.search_placeholder')}
               icon={<Search className="w-4 h-4" />}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -322,7 +324,7 @@ export function NotificationsPage() {
               icon={<X className="w-4 h-4" />}
               onClick={() => setSearchQuery('')}
             >
-              مسح
+              {t('notifications_page.clear')}
             </Button>
           )}
         </div>
@@ -337,13 +339,13 @@ export function NotificationsPage() {
             </div>
             <h2 className="text-xl font-semibold text-text mb-2">
               {notifications.length === 0
-                ? 'لا توجد تنبيهات'
-                : 'لا توجد نتائج مطابقة'}
+                ? t('notifications_page.no_notifications')
+                : t('notifications_page.no_results')}
             </h2>
             <p className="text-text-secondary">
               {notifications.length === 0
-                ? 'ستظهر التنبيهات هنا عندما تحدث أحداث جديدة'
-                : 'جرّب تغيير الفلاتر أو البحث'}
+                ? t('notifications_page.no_notifications_desc')
+                : t('notifications_page.try_change_filters')}
             </p>
           </div>
         </Card>
@@ -354,7 +356,7 @@ export function NotificationsPage() {
         <div className="space-y-3">
           {filteredNotifications.map((notif) => {
             const type = notif.notification_type;
-            const priorityBadge = getPriorityBadge(notif.priority);
+            const priorityBadge = getPriorityBadge(notif.priority, t);
 
             return (
               <Card
@@ -410,7 +412,7 @@ export function NotificationsPage() {
                             p-1.5 rounded-lg hover:bg-primary/10 
                             text-primary transition-colors flex-shrink-0
                           "
-                          title="تعليم كمقروء"
+                          title={t('notifications_page.mark_as_read')}
                         >
                           <Check className="w-4 h-4" />
                         </button>
@@ -426,8 +428,8 @@ export function NotificationsPage() {
                     <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
                       <div className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        <span title={formatDateTime(notif.created_at)}>
-                          {timeAgo(notif.created_at)}
+                        <span title={formatDateTime(notif.created_at, i18n.language)}>
+                          {timeAgo(notif.created_at, t)}
                         </span>
                       </div>
                       {type && (

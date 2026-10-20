@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=Tajawal:wght@300;400;500;700;800&family=Almarai:wght@300;400;700;800&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Noto+Kufi+Arabic:wght@300;400;500;600;700&family=Readex+Pro:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800&family=Changa:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -23,7 +23,13 @@
   --color-text: #111827;
   --color-text-secondary: #4b5563;
   --color-text-muted: #9ca3af;
+
+  /* ⭐ Theme dynamic variables */
+  --radius-base: 8px;
+  --shadow-base: 0 4px 6px rgba(0, 0, 0, 0.08);
+  --font-family: 'Cairo', 'Inter', system-ui, sans-serif;
 }
+
 
 /* ═══════════════════════════════════════════════════════════
    Base Styles
@@ -44,11 +50,19 @@ html, body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  font-family: 'Cairo', 'Inter', system-ui, sans-serif;
   background-color: var(--color-bg-secondary);
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ⭐ تطبيق الخط على كل العناصر — ليعمل تغيير الخط ديناميكياً */
+body,
+input,
+textarea,
+select,
+button {
+  font-family: var(--font-family, 'Cairo', 'Inter', system-ui, sans-serif);
 }
 
 #root {
@@ -402,4 +416,39 @@ html, body {
   .print\:w-full {
     width: 100% !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/* ⭐ Theme dynamic utilities                                   */
+/* ═══════════════════════════════════════════════════════════ */
+
+.card,
+.surface {
+  border-radius: var(--radius-base);
+  box-shadow: var(--shadow-base);
+}
+
+.btn,
+.input {
+  border-radius: calc(var(--radius-base) / 2);
+}
+
+html[data-theme-dark="true"] {
+  color-scheme: dark;
+}
+
+/* ⭐ كلاس .input — مع خط ديناميكي */
+.input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-family: var(--font-family, 'Cairo', 'Inter', system-ui, sans-serif);
+}
+.input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  border-color: var(--color-primary);
 }
