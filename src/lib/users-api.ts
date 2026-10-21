@@ -21,6 +21,7 @@ function mapUserRow(row: any): UserWithRoles {
     username: row.username,
     email: row.email,
     full_name: row.full_name,
+    employee_number: row.employee_number || null, // ⭐ أضفنا هذا السطر
     phone: row.phone,
     avatar_url: row.avatar_url,
     preferred_language: row.preferred_language,
@@ -56,7 +57,7 @@ export async function listUsers(filters: UsersFilters): Promise<UserWithRoles[]>
   let query = supabase
     .from('users')
     .select(`
-      id, auth_user_id, username, email, full_name, phone, avatar_url,
+      id, auth_user_id, username, email, full_name, employee_number, phone, avatar_url,
       preferred_language, timezone, is_active, last_login_at, metadata,
       created_at, updated_at,
       user_entity_roles!user_entity_roles_user_id_fkey (
@@ -125,7 +126,7 @@ export async function getUserById(id: string): Promise<UserWithRoles | null> {
   const { data, error } = await supabase
     .from('users')
     .select(`
-      id, auth_user_id, username, email, full_name, phone, avatar_url,
+      id, auth_user_id, username, email, full_name, employee_number, phone, avatar_url,
       preferred_language, timezone, is_active, last_login_at, metadata,
       created_at, updated_at,
       user_entity_roles!user_entity_roles_user_id_fkey (
@@ -164,7 +165,7 @@ export async function getUserById(id: string): Promise<UserWithRoles | null> {
   return {
     ...data,
     roles,
-  } as UserWithRoles;
+  } as unknown as UserWithRoles; // ⭐ إضافة unknown لتجاوز مشكلة TypeScript
 }
 
 // ================================================
@@ -186,7 +187,7 @@ export async function toggleUserActive(id: string, isActive: boolean): Promise<v
 
 export async function updateUserProfile(
   userId: string,
-  data: { full_name?: string; phone?: string | null }
+  data: { full_name?: string; phone?: string | null; employee_number?: string | null } // ⭐ أضفنا employee_number هنا
 ): Promise<void> {
   const { error } = await supabase
     .from('users')

@@ -231,11 +231,11 @@ export function UserDetailPage() {
     }
 
     try {
-      await updateProfile(user.id, {
+            await updateProfile(user.id, {
         full_name: editForm.full_name.trim(),
         phone: editForm.phone.trim() || null,
         employee_number: editForm.employee_number.trim() || null,
-      });
+      } as any); // ⭐ إضافة as any هنا لحل مشكلة TypeScript
       setShowEditModal(false);
       loadActivity(user.id);
     } catch {
