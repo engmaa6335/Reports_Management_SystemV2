@@ -13,6 +13,7 @@ import {
   Building2,
   X,
   AlertCircle,
+  GraduationCap,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore } from '../../stores/entity-store';
@@ -20,6 +21,10 @@ import { useReportsStore } from '../../stores/reports-store';
 import { useTemplatesStore } from '../../stores/templates-store';
 import { Button, Card, Input } from '../../components/ui';
 import { Loading } from '../../components/ui/Loading';
+
+// ================================================
+// Helpers
+// ================================================
 
 function formatDate(dateStr: string | null, lang: string): string {
   if (!dateStr) return '—';
@@ -105,8 +110,23 @@ function getTemplateKind(
   return 'other';
 }
 
+// ⭐ استخراج اسم المعلم من بيانات التقرير
+function extractTeacherName(data: Record<string, unknown> | undefined): string {
+  if (!data) return '—';
+  const val = data.teacher_name;
+  return typeof val === 'string' && val.trim() ? val : '—';
+}
+
+// ================================================
+// Types
+// ================================================
+
 type StatusFilter = 'all' | 'active' | 'updated' | 'aggregated' | 'archived';
 type KindFilter = 'all' | 'rl' | 'tls';
+
+// ================================================
+// Component
+// ================================================
 
 export function ReportsListPage() {
   const { t, i18n } = useTranslation();
@@ -147,6 +167,27 @@ export function ReportsListPage() {
     }
   }, [activeEntity?.roleCode, activeEntity?.entityId, loadAvailableTemplates]);
 
+  // ⭐ تحديد اسم العمود ديناميكياً حسب نوع الكيان
+  const entityColumnLabel = useMemo(() => {
+    const role = activeEntity?.roleCode;
+    if (role === 'tls_manager') {
+      return i18n.language === 'ar' ? 'المركز' : 'Center';
+    }
+    if (role === 'school_manager') {
+      return i18n.language === 'ar' ? 'المدرسة' : 'School';
+    }
+    
+    // للمختصين (TLS أو R.L)
+    if (activeEntity?.regionModes?.includes('tls') && !activeEntity?.regionModes?.includes('rl')) {
+      return i18n.language === 'ar' ? 'المركز' : 'Center';
+    }
+    if (activeEntity?.regionModes?.includes('rl') && !activeEntity?.regionModes?.includes('tls')) {
+      return i18n.language === 'ar' ? 'المدرسة' : 'School';
+    }
+
+    return i18n.language === 'ar' ? 'المدرسة / المركز' : 'School / Center';
+  }, [activeEntity?.roleCode, activeEntity?.regionModes, i18n.language]);
+
   const filteredReports = useMemo(() => {
     let result = reports;
 
@@ -166,7 +207,8 @@ export function ReportsListPage() {
         (r) =>
           r.template?.name_ar?.toLowerCase().includes(q) ||
           r.entity?.name_ar?.toLowerCase().includes(q) ||
-          r.creator?.full_name?.toLowerCase().includes(q)
+          r.creator?.full_name?.toLowerCase().includes(q) ||
+          extractTeacherName(r.data as any).toLowerCase().includes(q)
       );
     }
 
@@ -493,11 +535,12 @@ export function ReportsListPage() {
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">
                     {t('reports_page.table_report')}
                   </th>
+                  {/* ⭐ استخدام المتغير الديناميكي هنا */}
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden md:table-cell">
-                    {t('reports_page.table_category')}
+                    {entityColumnLabel}
                   </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden lg:table-cell">
-                    {t('reports_page.table_entity')}
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden md:table-cell">
+                    {i18n.language === 'ar' ? 'المعلم' : 'Teacher'}
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden lg:table-cell">
                     {t('reports_page.table_creator')}
@@ -513,6 +556,8 @@ export function ReportsListPage() {
               <tbody>
                 {filteredReports.map((report) => {
                   const badge = getStatusBadge(report.status, t);
+                  const teacherName = extractTeacherName(report.data as any);
+
                   return (
                     <tr
                       key={report.id}
@@ -537,26 +582,22 @@ export function ReportsListPage() {
                         </div>
                       </td>
 
+                      {/* ⭐ اسم المدرسة / المركز */}
                       <td className="px-4 py-4 hidden md:table-cell">
-                        {report.template?.category && (
-                          <span
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium"
-                            style={{
-                              backgroundColor: `${report.template.category.color}15`,
-                              color:
-                                report.template.category.color || '#2563eb',
-                            }}
-                          >
-                            {report.template.category.name_ar}
+                        <div className="flex items-center gap-2 text-sm text-text">
+                          <Building2 className="w-4 h-4 text-text-muted flex-shrink-0" />
+                          <span className="truncate max-w-[200px]" title={report.entity?.name_ar}>
+                            {report.entity?.name_ar || '—'}
                           </span>
-                        )}
+                        </div>
                       </td>
 
-                      <td className="px-4 py-4 hidden lg:table-cell">
+                      {/* ⭐ اسم المعلم */}
+                      <td className="px-4 py-4 hidden md:table-cell">
                         <div className="flex items-center gap-2 text-sm text-text">
-                          <Building2 className="w-4 h-4 text-text-muted" />
-                          <span className="truncate">
-                            {report.entity?.name_ar || '—'}
+                          <GraduationCap className="w-4 h-4 text-text-muted flex-shrink-0" />
+                          <span className="truncate max-w-[150px]" title={teacherName}>
+                            {teacherName}
                           </span>
                         </div>
                       </td>
@@ -594,6 +635,10 @@ export function ReportsListPage() {
     </div>
   );
 }
+
+// ================================================
+// Sub-Components
+// ================================================
 
 interface StatCardProps {
   icon: React.ReactNode;

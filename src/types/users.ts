@@ -9,6 +9,7 @@ export interface User {
   email: string;
   full_name: string;
   phone: string | null;
+  employee_number: string | null;   // ⬅️ أُضيف هنا
   avatar_url: string | null;
   preferred_language: string | null;
   timezone: string | null;
@@ -105,6 +106,7 @@ export interface CreateUserPayload {
   username: string;
   full_name: string;
   phone?: string;
+  employee_number?: string;   // ⬅️ أُضيف هنا (اختياري عند الإنشاء)
   role_id: string;
   entity_id: string;
 }

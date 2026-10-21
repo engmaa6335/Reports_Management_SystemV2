@@ -156,7 +156,21 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
 
       // 🔑 الفلترة حسب الدور
       if (isManager) {
-        query = query.eq('entity_id', entityId);
+        // ⭐ مدير المدرسة/المركز: يرى التقارير التي entity_id الخاص بها يطابق كيانه
+        // تم إضافة region_id لدعم التقارير القديمة التي حُفظت قبل التعديل
+        const { data: entityData } = await supabase
+          .from('entities')
+          .select('region_id')
+          .eq('id', entityId)
+          .single();
+
+        const regionId = entityData?.region_id;
+
+        if (regionId) {
+          query = query.or(`entity_id.eq.${entityId},created_by.eq.${userId},region_id.eq.${regionId}`);
+        } else {
+          query = query.or(`entity_id.eq.${entityId},created_by.eq.${userId}`);
+        }
       } else if (isRegionManager) {
         // ⭐ جلب نوع الكيان + region_id
         const { data: entityData } = await supabase

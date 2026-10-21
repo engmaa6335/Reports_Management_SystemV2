@@ -122,19 +122,7 @@ export function CreateReportPage() {
   const [loadingManager, setLoadingManager] = useState(false);
   
   const prevCenterIdRef = useRef<string>('');
-  
-  // ⭐ تخزين الكيان السابق في Ref للمقارنة الفورية
-  const lastEntityIdRef = useRef<string>(activeEntity?.entityId || '');
-
-  // ⭐ 1. حارس البوابة: يعمل فوراً قبل أي شيء آخر
-  // إذا تغير الكيان، يتم تدمير أي قالب مفتوح فوراً
-  const currentEntityId = activeEntity?.entityId || '';
-  if (lastEntityIdRef.current && lastEntityIdRef.current !== currentEntityId) {
-    lastEntityIdRef.current = currentEntityId;
-    clearSelection();
-    // لا يمكننا استدعاء setState أثناء الريندر، لذا سنعتمد على المتغير المحلي
-    // إذا كان القالب لا يزال موجوداً هنا، فسيتم مسحه في الـ useEffect بالأسفل
-  }
+  const prevEntityIdRef = useRef<string>(activeEntity?.entityId || '');
 
   // ================================================
   // Effects
@@ -146,25 +134,24 @@ export function CreateReportPage() {
     }
   }, [activeEntity?.roleCode, activeEntity?.entityId, loadAvailableTemplates]);
 
-  // ⭐ 2. مراقبة تغيير الكيان وتدمير الحالة بالكامل
+  // عند تغيير الكيان
   useEffect(() => {
     const currentEntityId = activeEntity?.entityId || '';
 
-    if (lastEntityIdRef.current && lastEntityIdRef.current !== currentEntityId) {
-      lastEntityIdRef.current = currentEntityId;
+    if (!prevEntityIdRef.current) {
+      prevEntityIdRef.current = currentEntityId;
+      return;
+    }
 
-      // تدمير الحالة
+    if (prevEntityIdRef.current !== currentEntityId) {
+      prevEntityIdRef.current = currentEntityId;
       clearSelection();
       setFormData({});
       setErrors({});
       setStep('select');
       prevCenterIdRef.current = '';
       setLoadingManager(false);
-
-      // التوجيه لصفحة نظيفة
       navigate('/reports/new', { replace: true });
-    } else {
-      lastEntityIdRef.current = currentEntityId;
     }
   }, [activeEntity?.entityId, clearSelection, navigate]);
 
@@ -458,11 +445,23 @@ export function CreateReportPage() {
     }
 
     try {
+      // ⭐ 1. استخراج الكيان المستهدف (المدرسة أو المركز) من النموذج
+      const centerSelectField = fields.find(
+        (f) => f.field_type === 'center_select' || f.field_type === 'school_select'
+      );
+      
+      // إذا وجدنا الحقل، نأخذ القيمة، وإلا نستخدم كيان المنطقة كاحتياط
+      const selectedSchoolOrCenterId = centerSelectField 
+        ? (formData[centerSelectField.field_key] as string) 
+        : activeEntity.entityId;
+
       const reportId = await createReport({
         templateId: selectedTemplate.id,
         templateVersionId: selectedTemplate.current_version_id,
-        entityId: activeEntity.entityId,
-        regionId: activeEntity.entityId,
+        // ⭐ الحفظ هنا: الكيان المستهدف (مدرسة/مركز) كـ entityId
+        entityId: selectedSchoolOrCenterId || activeEntity.entityId, 
+        // ⭐ المنطقة (المختص) كـ regionId
+        regionId: activeEntity.entityId, 
         data: formData,
         periodType: null,
         periodStart: null,
@@ -497,7 +496,6 @@ export function CreateReportPage() {
     return <Loading message={t('report_form.loading')} />;
   }
 
-  // ⭐ تحقق نهائي وصارم جداً
   const isTemplateAllowed = selectedTemplate 
     ? visibleTemplates.some(t => t.id === selectedTemplate.id)
     : false;

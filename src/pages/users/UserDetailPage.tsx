@@ -13,6 +13,7 @@ import {
   Save,
   Activity,
   Key,
+  Hash,
 } from 'lucide-react';
 import { useUsersStore } from '../../stores/users-store';
 import { listEntitiesByType } from '../../lib/users-api';
@@ -30,7 +31,7 @@ import type { Entity } from '../../types/users';
 interface ConfirmState {
   open: boolean;
   title: string;
-  message: React.ReactNode; 
+  message: React.ReactNode;
   confirmText: string;
   variant: 'danger' | 'warning' | 'info' | 'success';
   onConfirm: () => void | Promise<void>;
@@ -63,14 +64,17 @@ export function UserDetailPage() {
     clearError,
   } = useUsersStore();
 
-  // ⭐ أضفنا تبويب 'permissions'
   const [activeTab, setActiveTab] = useState<'info' | 'roles' | 'permissions' | 'activity'>(
     'info'
   );
 
   // Edit Profile Modal
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({ full_name: '', phone: '' });
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    phone: '',
+    employee_number: '',
+  });
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
 
   // Add Role Modal
@@ -161,9 +165,7 @@ export function UserDetailPage() {
   // Confirm Helper
   // ================================================
 
-  const showConfirm = (
-    config: Omit<ConfirmState, 'open'>
-  ) => {
+  const showConfirm = (config: Omit<ConfirmState, 'open'>) => {
     setConfirmState({ ...config, open: true });
   };
 
@@ -210,6 +212,7 @@ export function UserDetailPage() {
     setEditForm({
       full_name: user.full_name,
       phone: user.phone || '',
+      employee_number: user.employee_number || '',
     });
     setEditErrors({});
     setShowEditModal(true);
@@ -231,6 +234,7 @@ export function UserDetailPage() {
       await updateProfile(user.id, {
         full_name: editForm.full_name.trim(),
         phone: editForm.phone.trim() || null,
+        employee_number: editForm.employee_number.trim() || null,
       });
       setShowEditModal(false);
       loadActivity(user.id);
@@ -452,6 +456,12 @@ export function UserDetailPage() {
             />
 
             <InfoRow
+              icon={<Hash className="w-5 h-5" />}
+              label="الرقم الوظيفي"
+              value={user.employee_number || '—'}
+            />
+
+            <InfoRow
               icon={<UserIcon className="w-5 h-5" />}
               label="الاسم الكامل"
               value={user.full_name}
@@ -669,6 +679,22 @@ export function UserDetailPage() {
                     ⚠️ {editErrors.full_name}
                   </p>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text mb-2">
+                  الرقم الوظيفي
+                </label>
+                <input
+                  type="text"
+                  value={editForm.employee_number}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, employee_number: e.target.value }))
+                  }
+                  placeholder="مثال: EMP-2026-001"
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  dir="ltr"
+                />
               </div>
 
               <div>
@@ -945,6 +971,7 @@ function getFieldLabel(key: string): string {
   const labels: Record<string, string> = {
     full_name: 'الاسم',
     phone: 'الهاتف',
+    employee_number: 'الرقم الوظيفي',
     is_active: 'الحالة',
     email: 'البريد',
   };
