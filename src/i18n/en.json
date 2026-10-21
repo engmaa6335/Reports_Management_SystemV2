@@ -17,7 +17,8 @@
     "no": "No",
     "confirm": "Confirm",
     "close": "Close",
-    "note": "Note"
+    "note": "Note",
+    "import": "Import"
   },
   "auth": {
     "login": "Login",
@@ -74,7 +75,16 @@
     "theme": "Theme",
     "language": "Language",
     "notifications": "Notifications",
-    "logout": "Logout"
+    "logout": "Logout",
+    "subtitle": "Manage system and templates",
+    "no_access": "No settings available for your current role",
+    "sub_templates": "Manage templates, fields, and sections",
+    "sub_notifications": "Manage notification rules and templates",
+    "sub_users": "Manage accounts and roles",
+    "sub_entities": "Manage regions, schools, and centers",
+    "sub_roles": "Manage roles and permissions",
+    "sub_themes": "Manage themes and appearance",
+    "reset_themes": "Reset User Themes"
   },
   "sidebar": {
     "home": "Home",

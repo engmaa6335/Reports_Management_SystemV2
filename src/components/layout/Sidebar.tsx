@@ -46,11 +46,12 @@ interface SidebarProps {
 }
 
 export function Sidebar({ open }: SidebarProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { activeEntity } = useEntityStore();
   const location = useLocation();
   const navigate = useNavigate();
   const userRole = activeEntity?.roleCode;
+  const isRTL = i18n.dir() === 'rtl';
 
   const { allowed: canManageThemes } = usePermission('themes.manage');
   const { allowed: canManageUsers } = usePermission('users.manage');
@@ -64,6 +65,7 @@ export function Sidebar({ open }: SidebarProps) {
     canManageSettings;
 
   const [settingsPopupOpen, setSettingsPopupOpen] = useState(false);
+  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
   const popupRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -75,7 +77,6 @@ export function Sidebar({ open }: SidebarProps) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // القوائم (تُترجم ديناميكياً)
   const MENU_ITEMS: SidebarItem[] = [
     {
       id: 'home',
@@ -223,6 +224,25 @@ export function Sidebar({ open }: SidebarProps) {
 
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.preventDefault();
+    if (settingsButtonRef.current) {
+      const rect = settingsButtonRef.current.getBoundingClientRect();
+      
+      // رفع القائمة قليلاً للأعلى (نطرح 8 بكسل من top)
+      const top = rect.top - 8; 
+      
+      // حساب الموضع الأفقي مع التأكد من عدم تجاوز حدود الشاشة
+      let left = isRTL ? rect.left - 260 : rect.right + 8;
+      
+      // منع القائمة من الخروج من الجانب الأيسر للشاشة
+      if (left < 8) left = 8;
+      
+      // منع القائمة من الخروج من الجانب الأيمن للشاشة
+      if (left + 260 > window.innerWidth - 8) {
+        left = window.innerWidth - 260 - 8;
+      }
+
+      setPopupPosition({ top, left });
+    }
     setSettingsPopupOpen((prev) => !prev);
   };
 
@@ -233,7 +253,6 @@ export function Sidebar({ open }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile overlay */}
       {isMobile && open && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20"
@@ -241,7 +260,7 @@ export function Sidebar({ open }: SidebarProps) {
         />
       )}
 
-            <aside
+      <aside
         className={`
           fixed top-16 bottom-0 start-0 bg-surface border-e border-border
           transition-transform duration-300 ease-in-out z-30
@@ -249,7 +268,9 @@ export function Sidebar({ open }: SidebarProps) {
           ${
             open
               ? 'translate-x-0'
-              : 'rtl:translate-x-full ltr:-translate-x-full'
+              : isRTL
+              ? 'translate-x-full'
+              : '-translate-x-full'
           }
         `}
       >
@@ -313,71 +334,70 @@ export function Sidebar({ open }: SidebarProps) {
             © 2026 EDC Platform
           </div>
         </div>
-
-        {/* Desktop popup */}
-        {!isMobile && (
-          <div
-            ref={popupRef}
-            className={`
-              absolute top-0 right-full mr-2 w-64
-              bg-surface border border-border rounded-xl shadow-2xl
-              overflow-hidden
-              transition-all duration-200 ease-out
-              ${
-                settingsPopupOpen
-                  ? 'opacity-100 translate-x-0 pointer-events-auto'
-                  : 'opacity-0 translate-x-4 pointer-events-none'
-              }
-            `}
-          >
-            <div className="px-4 py-3 border-b border-border bg-primary/5">
-              <div className="flex items-center gap-2">
-                <Settings className="w-4 h-4 text-primary" />
-                <span className="text-sm font-bold text-primary">
-                  {t('sidebar.settings')}
-                </span>
-              </div>
-            </div>
-            <div className="py-2">
-              {visibleSubItems.map((subItem) => {
-                const isActive =
-                  location.pathname === subItem.path ||
-                  location.pathname.startsWith(subItem.path + '/');
-                return (
-                  <button
-                    key={subItem.id}
-                    onClick={() => handleSubItemClick(subItem.path)}
-                    className={`
-                      w-full flex items-center gap-3 px-4 py-2.5 text-sm
-                      transition-colors text-right border-r-4
-                      ${
-                        isActive
-                          ? 'bg-primary/10 text-primary border-r-primary font-medium'
-                          : 'text-text-secondary hover:bg-bg-secondary hover:text-text border-r-transparent'
-                      }
-                    `}
-                  >
-                    <span className="flex-shrink-0">{subItem.icon}</span>
-                    <span className="flex-1 truncate text-right">
-                      {subItem.label}
-                    </span>
-                    {subItem.badge && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-medium flex-shrink-0">
-                        {subItem.badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </aside>
 
-      {/* Mobile bottom sheet */}
+      {/* Desktop Popup — Fixed Positioning */}
+      {!isMobile && settingsPopupOpen && (
+        <div
+          ref={popupRef}
+          style={{
+            position: 'fixed',
+            top: popupPosition.top,
+            left: popupPosition.left,
+            width: '260px',
+            // التأكد من أن القائمة لا تتجاوز ارتفاع الشاشة
+            maxHeight: 'calc(100vh - 100px)',
+            overflowY: 'auto',
+          }}
+          className="bg-surface border border-border rounded-xl shadow-2xl z-50"
+        >
+          <div className="px-4 py-3 border-b border-border bg-primary/5">
+            <div className="flex items-center gap-2">
+              <Settings className="w-4 h-4 text-primary" />
+              <span className="text-sm font-bold text-primary">
+                {t('sidebar.settings')}
+              </span>
+            </div>
+          </div>
+          <div className="py-2">
+            {visibleSubItems.map((subItem) => {
+              const isActive =
+                location.pathname === subItem.path ||
+                location.pathname.startsWith(subItem.path + '/');
+              return (
+                <button
+                  key={subItem.id}
+                  onClick={() => handleSubItemClick(subItem.path)}
+                  className={`
+                    w-full flex items-center gap-3 px-4 py-2.5 text-sm
+                    transition-colors text-right border-r-4
+                    ${
+                      isActive
+                        ? 'bg-primary/10 text-primary border-r-primary font-medium'
+                        : 'text-text-secondary hover:bg-bg-secondary hover:text-text border-r-transparent'
+                    }
+                  `}
+                >
+                  <span className="flex-shrink-0">{subItem.icon}</span>
+                  <span className="flex-1 truncate text-right">
+                    {subItem.label}
+                  </span>
+                  {subItem.badge && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-medium flex-shrink-0">
+                      {subItem.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Bottom Sheet */}
       {isMobile && settingsPopupOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
           onClick={() => setSettingsPopupOpen(false)}
         >
           <div

@@ -1,4 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Settings,
   FileText,
@@ -17,46 +18,46 @@ import { useEntityStore } from '../../stores/entity-store';
 
 interface ItemInfo {
   path: string;
-  title: string;
-  subtitle: string;
+  titleKey: string;
+  subtitleKey: string;
   icon: React.ReactNode;
 }
 
 const SETTINGS_ITEMS: ItemInfo[] = [
   {
     path: '/settings/templates',
-    title: 'إعدادات القوالب',
-    subtitle: 'إدارة القوالب والحقول والأقسام',
+    titleKey: 'admin.templates',
+    subtitleKey: 'settings.sub_templates',
     icon: <FileText className="w-6 h-6" />,
   },
   {
     path: '/settings/notifications',
-    title: 'إدارة التنبيهات',
-    subtitle: 'إدارة قواعد التنبيهات والقوالب',
+    titleKey: 'admin.notifications',
+    subtitleKey: 'settings.sub_notifications',
     icon: <Bell className="w-6 h-6" />,
   },
   {
     path: '/settings/users',
-    title: 'إدارة المستخدمين',
-    subtitle: 'إدارة الحسابات والأدوار',
+    titleKey: 'admin.users',
+    subtitleKey: 'settings.sub_users',
     icon: <Users className="w-6 h-6" />,
   },
   {
     path: '/settings/entities',
-    title: 'إدارة الكيانات',
-    subtitle: 'إدارة المناطق والمدارس والمراكز',
+    titleKey: 'admin.entities',
+    subtitleKey: 'settings.sub_entities',
     icon: <Building2 className="w-6 h-6" />,
   },
   {
     path: '/settings/roles',
-    title: 'إدارة الأدوار',
-    subtitle: 'إدارة الأدوار والصلاحيات',
+    titleKey: 'admin.roles',
+    subtitleKey: 'settings.sub_roles',
     icon: <Shield className="w-6 h-6" />,
   },
   {
     path: '/settings/themes',
-    title: 'إدارة الثيمات',
-    subtitle: 'إدارة الثيمات والمظهر',
+    titleKey: 'admin.themes',
+    subtitleKey: 'settings.sub_themes',
     icon: <Palette className="w-6 h-6" />,
   },
 ];
@@ -66,6 +67,7 @@ const SETTINGS_ITEMS: ItemInfo[] = [
 // ═══════════════════════════════════════════════════════════
 
 export function SettingsLayout() {
+  const { t } = useTranslation();
   const { activeEntity } = useEntityStore();
   const location = useLocation();
   const isTechSupport = activeEntity?.roleCode === 'tech_support';
@@ -77,8 +79,8 @@ export function SettingsLayout() {
       location.pathname.startsWith(item.path + '/')
   );
 
-  const title = currentItem?.title || 'الإعدادات';
-  const subtitle = currentItem?.subtitle || 'إدارة النظام والقوالب';
+  const title = currentItem ? t(currentItem.titleKey) : t('sidebar.settings');
+  const subtitle = currentItem ? t(currentItem.subtitleKey) : t('settings.subtitle');
   const icon = currentItem?.icon || <Settings className="w-6 h-6" />;
 
   return (
@@ -93,7 +95,7 @@ export function SettingsLayout() {
           <div className="min-w-0 flex-1">
             {/* Breadcrumb */}
             <div className="flex items-center gap-1.5 text-xs text-text-muted mb-1">
-              <span>الإعدادات</span>
+              <span>{t('sidebar.settings')}</span>
               {currentItem && (
                 <>
                   <ChevronLeft className="w-3 h-3" />
@@ -121,9 +123,9 @@ export function SettingsLayout() {
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-bg-secondary text-text-muted mb-4">
               <Settings className="w-10 h-10" />
             </div>
-            <h2 className="text-xl font-bold text-text mb-2">الإعدادات</h2>
+            <h2 className="text-xl font-bold text-text mb-2">{t('sidebar.settings')}</h2>
             <p className="text-text-secondary text-sm">
-              لا توجد إعدادات متاحة لدورك الحالي
+              {t('settings.no_access')}
             </p>
           </div>
         )}
