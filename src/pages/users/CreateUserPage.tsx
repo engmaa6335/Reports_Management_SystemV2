@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Save, UserPlus } from 'lucide-react';
+import { ArrowRight, Save, UserPlus, Lock } from 'lucide-react';
 import { useUsersStore } from '../../stores/users-store';
+import { usePermission } from '../../hooks/usePermission';
 import { createUser, listEntitiesByType } from '../../lib/users-api';
 import { getAllowedEntityTypes } from '../../lib/role-entity-types';
 import { Button, Card } from '../../components/ui';
 import { SearchableSelect } from '../../components/ui/SearchableSelect';
 import type { Entity } from '../../types/users';
+import { Loading } from '../../components/ui/Loading';
 
 // ================================================
 // Component
@@ -15,6 +17,12 @@ import type { Entity } from '../../types/users';
 export function CreateUserPage() {
   const navigate = useNavigate();
   const { roles, loadRoles } = useUsersStore();
+
+  // ⭐ فحص الصلاحية
+  const { allowed: canCreate, loading: checkingCreate } = usePermission('users.create');
+  const { allowed: canManage, loading: checkingManage } = usePermission('users.manage');
+
+  const canSubmit = canManage || canCreate;
 
   const [form, setForm] = useState({
     email: '',
@@ -37,8 +45,10 @@ export function CreateUserPage() {
   // ================================================
 
   useEffect(() => {
-    loadRoles();
-  }, [loadRoles]);
+    if (canSubmit) {
+      loadRoles();
+    }
+  }, [loadRoles, canSubmit]);
 
   // ⭐ عندما يتغير الدور → جلب الكيانات المسموحة فقط
   useEffect(() => {
@@ -59,7 +69,6 @@ export function CreateUserPage() {
     const fetchEntities = async () => {
       setLoadingEntities(true);
       try {
-        // جلب كل الأنواع المسموحة
         const all: Entity[] = [];
         for (const typeCode of allowedTypes) {
           const list = await listEntitiesByType(typeCode);
@@ -67,7 +76,6 @@ export function CreateUserPage() {
         }
         setAvailableEntities(all);
 
-        // إعادة تعيين الكيان إذا لم يكن في القائمة الجديدة
         if (form.entity_id && !all.find((e) => e.id === form.entity_id)) {
           setForm((f) => ({ ...f, entity_id: '' }));
         }
@@ -137,6 +145,11 @@ export function CreateUserPage() {
   };
 
   const handleSubmit = async () => {
+    if (!canSubmit) {
+      alert('ليس لديك صلاحية لتنفيذ هذا الإجراء.');
+      return;
+    }
+
     if (!validate()) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -166,7 +179,7 @@ export function CreateUserPage() {
   };
 
   // ================================================
-  // Render
+  // Helpers
   // ================================================
 
   const baseInput = (hasError: boolean) =>
@@ -180,6 +193,35 @@ export function CreateUserPage() {
         .map(getEntityTypeName)
         .join('، ')
     : '';
+
+  // ================================================
+  // Render Guards
+  // ================================================
+
+  if (checkingCreate || checkingManage) {
+    return <Loading message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  if (!canSubmit) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لإضافة مستخدمين جدد.</p>
+        <Button
+          variant="ghost"
+          className="mt-4"
+          onClick={() => navigate('/settings/users')}
+        >
+          العودة للمستخدمين
+        </Button>
+      </div>
+    );
+  }
+
+  // ================================================
+  // Render — Main
+  // ================================================
 
   return (
     <div className="space-y-6">
@@ -207,7 +249,7 @@ export function CreateUserPage() {
           variant="primary"
           icon={<Save className="w-4 h-4" />}
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={saving || !canSubmit}
           loading={saving}
         >
           إنشاء المستخدم
@@ -231,7 +273,6 @@ export function CreateUserPage() {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Email */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               البريد الإلكتروني <span className="text-danger">*</span>
@@ -249,7 +290,6 @@ export function CreateUserPage() {
             )}
           </div>
 
-          {/* Username */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               اسم المستخدم <span className="text-danger">*</span>
@@ -269,7 +309,6 @@ export function CreateUserPage() {
             )}
           </div>
 
-          {/* Full Name */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               الاسم الكامل <span className="text-danger">*</span>
@@ -288,7 +327,6 @@ export function CreateUserPage() {
             )}
           </div>
 
-          {/* Phone */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               الهاتف
@@ -303,7 +341,6 @@ export function CreateUserPage() {
             />
           </div>
 
-          {/* Password */}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-text mb-2">
               كلمة المرور المؤقتة <span className="text-danger">*</span>
@@ -335,7 +372,6 @@ export function CreateUserPage() {
         </h3>
 
         <div className="space-y-4">
-          {/* Role */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               الدور <span className="text-danger">*</span>
@@ -359,7 +395,6 @@ export function CreateUserPage() {
             )}
           </div>
 
-          {/* Entity — SearchableSelect */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               الكيان <span className="text-danger">*</span>
@@ -410,7 +445,7 @@ export function CreateUserPage() {
           size="lg"
           icon={<Save className="w-5 h-5" />}
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={saving || !canSubmit}
           loading={saving}
         >
           إنشاء المستخدم
@@ -426,20 +461,13 @@ export function CreateUserPage() {
 
 function getEntityIcon(entityTypeCode: string | null): string {
   switch (entityTypeCode) {
-    case 'region':
-      return '🗺️';
-    case 'school':
-      return '🏫';
-    case 'tls_center':
-      return '🏢';
-    case 'edu_unit':
-      return '📚';
-    case 'edc':
-      return '🏛️';
-    case 'qa_unit':
-      return '✅';
-    default:
-      return '📍';
+    case 'region': return '🗺️';
+    case 'school': return '🏫';
+    case 'tls_center': return '🏢';
+    case 'edu_unit': return '📚';
+    case 'edc': return '🏛️';
+    case 'qa_unit': return '✅';
+    default: return '📍';
   }
 }
 
@@ -454,3 +482,5 @@ function getEntityTypeName(typeCode: string): string {
   };
   return names[typeCode] || typeCode;
 }
+
+export default CreateUserPage;

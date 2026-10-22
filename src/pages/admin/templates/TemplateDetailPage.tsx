@@ -15,8 +15,10 @@ import {
   Calendar,
   Shield,
   Eye,
+  Lock,
 } from 'lucide-react';
 import { useTemplatesAdminStore } from '../../../stores/templates-admin-store';
+import { usePermission } from '../../../hooks/usePermission';
 import { Button, Card } from '../../../components/ui';
 import { Loading } from '../../../components/ui/Loading';
 import { FieldCard } from '../../../components/templates-admin/FieldCard';
@@ -45,6 +47,10 @@ export function TemplateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
+  // ⭐ فحص الصلاحيات
+  const { allowed: canManage } = usePermission('templates.manage');
+  const { allowed: canView, loading: checkingView } = usePermission('templates.view');
+
   const {
     selectedTemplate: template,
     fields,
@@ -66,13 +72,13 @@ export function TemplateDetailPage() {
   // ═══════════════════════════════════════════
 
   useEffect(() => {
-    if (id) {
+    if (id && canView) {
       loadTemplateById(id);
     }
     return () => {
       clearSelectedTemplate();
     };
-  }, [id, loadTemplateById, clearSelectedTemplate]);
+  }, [id, loadTemplateById, clearSelectedTemplate, canView]);
 
   // ═══════════════════════════════════════════
   // Handlers
@@ -83,21 +89,25 @@ export function TemplateDetailPage() {
   };
 
   const handleEditTemplate = () => {
-    if (template) {
+    if (template && canManage) {
       navigate(`/settings/templates/${template.id}/edit`);
     }
   };
 
   const handleCreateField = () => {
-    navigate(`/settings/templates/${id}/fields/new`);
+    if (canManage) {
+      navigate(`/settings/templates/${id}/fields/new`);
+    }
   };
 
   const handleEditField = (field: FormField) => {
-    navigate(`/settings/templates/${id}/fields/${field.id}/edit`);
+    if (canManage) {
+      navigate(`/settings/templates/${id}/fields/${field.id}/edit`);
+    }
   };
 
   const handleDeleteField = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !canManage) return;
     try {
       await deleteField(deleteTarget.id);
       setDeleteTarget(null);
@@ -171,16 +181,26 @@ export function TemplateDetailPage() {
   ];
 
   // ═══════════════════════════════════════════
-  // Render — Loading
+  // Render Guards
   // ═══════════════════════════════════════════
+
+  if (checkingView) {
+    return <Loading message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  if (!canView) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لعرض هذا القالب.</p>
+      </div>
+    );
+  }
 
   if (loadingDetail) {
     return <Loading message="جاري تحميل القالب..." />;
   }
-
-  // ═══════════════════════════════════════════
-  // Render — Not Found
-  // ═══════════════════════════════════════════
 
   if (!template) {
     return (
@@ -295,14 +315,18 @@ export function TemplateDetailPage() {
             <span className="hidden sm:inline">معاينة التقرير</span>
             <span className="sm:hidden">معاينة</span>
           </Button>
-          <Button
-            variant="primary"
-            icon={<Edit2 className="w-4 h-4" />}
-            onClick={handleEditTemplate}
-          >
-            <span className="hidden sm:inline">تعديل القالب</span>
-            <span className="sm:hidden">تعديل</span>
-          </Button>
+
+          {/* ⭐ زر التعديل يظهر فقط لمن يملك الصلاحية */}
+          {canManage && (
+            <Button
+              variant="primary"
+              icon={<Edit2 className="w-4 h-4" />}
+              onClick={handleEditTemplate}
+            >
+              <span className="hidden sm:inline">تعديل القالب</span>
+              <span className="sm:hidden">تعديل</span>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -345,9 +369,7 @@ export function TemplateDetailPage() {
         ))}
       </div>
 
-      {/* ═══════════════════════════════════════════════════════ */}
       {/* Tab: Info */}
-      {/* ═══════════════════════════════════════════════════════ */}
       {activeTab === 'info' && (
         <Card padding="lg">
           <h3 className="text-lg font-semibold text-text mb-4">
@@ -406,9 +428,7 @@ export function TemplateDetailPage() {
         </Card>
       )}
 
-      {/* ═══════════════════════════════════════════════════════ */}
       {/* Tab: Fields */}
-      {/* ═══════════════════════════════════════════════════════ */}
       {activeTab === 'fields' && (
         <div className="space-y-6">
           {/* Actions Bar */}
@@ -421,13 +441,17 @@ export function TemplateDetailPage() {
                 الحقول مرتبة حسب الأقسام والترتيب
               </p>
             </div>
-            <Button
-              variant="primary"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={handleCreateField}
-            >
-              إضافة حقل
-            </Button>
+
+            {/* ⭐ زر الإضافة يظهر فقط لمن يملك الصلاحية */}
+            {canManage && (
+              <Button
+                variant="primary"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={handleCreateField}
+              >
+                إضافة حقل
+              </Button>
+            )}
           </div>
 
           {/* Empty State */}
@@ -441,13 +465,15 @@ export function TemplateDetailPage() {
                 <p className="text-text-secondary text-sm mb-6">
                   ابدأ بإضافة حقل جديد للقالب
                 </p>
-                <Button
-                  variant="primary"
-                  icon={<Plus className="w-4 h-4" />}
-                  onClick={handleCreateField}
-                >
-                  إضافة حقل
-                </Button>
+                {canManage && (
+                  <Button
+                    variant="primary"
+                    icon={<Plus className="w-4 h-4" />}
+                    onClick={handleCreateField}
+                  >
+                    إضافة حقل
+                  </Button>
+                )}
               </div>
             </Card>
           ) : (
@@ -485,9 +511,7 @@ export function TemplateDetailPage() {
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════ */}
       {/* Tab: Stats */}
-      {/* ═══════════════════════════════════════════════════════ */}
       {activeTab === 'stats' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card padding="lg" className="text-center">
@@ -567,3 +591,5 @@ function InfoRow({
     </div>
   );
 }
+
+export default TemplateDetailPage;

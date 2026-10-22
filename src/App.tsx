@@ -6,12 +6,13 @@ import {
   Navigate,
   useLocation,
 } from 'react-router-dom';
-import { useTranslation } from 'react-i18next'; // ⭐ استيراد useTranslation
-import { supabase } from './lib/supabase'; // ⭐ استيراد supabase
+import { useTranslation } from 'react-i18next';
+import { supabase } from './lib/supabase';
 
 import { useAuthStore } from './stores/auth-store';
 import { useEntityStore } from './stores/entity-store';
 import { useThemeStore } from './stores/theme-store';
+import { usePermission } from './hooks/usePermission';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { MainLayout } from './components/layout/MainLayout';
 import { LoginPage } from './pages/auth/LoginPage';
@@ -73,6 +74,25 @@ import ResetUserThemesPage from './pages/settings/ResetUserThemesPage';
 import ProfilePage from './pages/profile/ProfilePage';
 
 // ═══════════════════════════════════════════════════════════
+// ⭐ حماية المسارات (توجيه فوري)
+// ═══════════════════════════════════════════════════════════
+
+function RequirePermission({ permission, children }: { permission: string; children: React.ReactNode }) {
+  const { allowed, loading } = usePermission(permission);
+
+  if (loading) {
+    return <Loading fullScreen message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  if (!allowed) {
+    // ⭐ نستخدم replace لمنع المستخدم من الرجوع للصفحة
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// ═══════════════════════════════════════════════════════════
 // AdminRedirect
 // ═══════════════════════════════════════════════════════════
 
@@ -92,35 +112,30 @@ function App() {
   } = useEntityStore();
 
   const initTheme = useThemeStore((s) => s.init);
-  const { i18n } = useTranslation(); // ⭐ للتحكم في اللغة
+  const { i18n } = useTranslation();
 
-  // 1. تهيئة المصادقة
   useEffect(() => {
     initialize();
   }, [initialize]);
 
-  // 2. تحميل الكيانات
   useEffect(() => {
     if (user && !entitiesInitialized) {
       loadUserEntities(user.id);
     }
   }, [user, entitiesInitialized, loadUserEntities]);
 
-  // 3. تنظيف الكيانات عند تسجيل الخروج
   useEffect(() => {
     if (initialized && !user) {
       clearEntities();
     }
   }, [initialized, user, clearEntities]);
 
-  // 4. تطبيق الثيم بعد تسجيل الدخول
   useEffect(() => {
     if (user?.id) {
       initTheme(user.id);
     }
   }, [user?.id, initTheme]);
 
-  // 5. ⭐ تحميل اللغة المفضلة من قاعدة البيانات عند تسجيل الدخول
   useEffect(() => {
     if (!user?.id) return;
 
@@ -131,7 +146,6 @@ function App() {
         .eq('user_id', user.id)
         .maybeSingle();
 
-      // نستخدم اللغة من قاعدة البيانات، أو اللغة المفضلة للمستخدم، أو العربية كافتراضي
       const savedLang = data?.language || user.preferredLanguage || 'ar';
 
       if (savedLang !== i18n.language) {
@@ -184,20 +198,52 @@ function App() {
           {/* ⭐ Profile */}
           <Route path="/profile" element={<ProfilePage />} />
 
-          {/* ⭐ Settings */}
-          <Route path="/settings" element={<SettingsLayout />}>
+          {/* ⭐ Settings (محمي بالكامل) */}
+          <Route path="/settings" element={
+            <RequirePermission permission="settings.view">
+              <SettingsLayout />
+            </RequirePermission>
+          }>
             <Route index element={<SettingsPage />} />
 
-            {/* Templates */}
-            <Route path="templates" element={<TemplatesPage />} />
-            <Route path="templates/new" element={<TemplateFormPage />} />
-            <Route path="templates/:id/edit" element={<TemplateFormPage />} />
-            <Route path="templates/:id/fields/new" element={<FieldFormPage />} />
-            <Route path="templates/:id/fields/:fieldId/edit" element={<FieldFormPage />} />
-            <Route path="templates/:id" element={<TemplateDetailPage />} />
+            {/* ⭐ Templates */}
+            <Route path="templates" element={
+              <RequirePermission permission="templates.view">
+                <TemplatesPage />
+              </RequirePermission>
+            } />
+            <Route path="templates/new" element={
+              <RequirePermission permission="templates.create">
+                <TemplateFormPage />
+              </RequirePermission>
+            } />
+            <Route path="templates/:id/edit" element={
+              <RequirePermission permission="templates.edit">
+                <TemplateFormPage />
+              </RequirePermission>
+            } />
+            <Route path="templates/:id/fields/new" element={
+              <RequirePermission permission="templates.manage">
+                <FieldFormPage />
+              </RequirePermission>
+            } />
+            <Route path="templates/:id/fields/:fieldId/edit" element={
+              <RequirePermission permission="templates.manage">
+                <FieldFormPage />
+              </RequirePermission>
+            } />
+            <Route path="templates/:id" element={
+              <RequirePermission permission="templates.view">
+                <TemplateDetailPage />
+              </RequirePermission>
+            } />
 
-            {/* Notifications Admin */}
-            <Route path="notifications" element={<NotificationsAdminPage />}>
+            {/* ⭐ Notifications Admin */}
+            <Route path="notifications" element={
+              <RequirePermission permission="notifications.manage">
+                <NotificationsAdminPage />
+              </RequirePermission>
+            }>
               <Route index element={<Navigate to="rules" replace />} />
               <Route path="rules" element={<NotificationRulesPage />} />
               <Route path="rules/new" element={<NotificationRuleFormPage />} />
@@ -211,32 +257,86 @@ function App() {
               <Route path="send-manual" element={<SendManualNotificationPage />} />
             </Route>
 
-            {/* Users */}
-            <Route path="users" element={<UsersListPage />} />
-            <Route path="users/new" element={<CreateUserPage />} />
-            <Route path="users/:id" element={<UserDetailPage />} />
+            {/* ⭐ Users */}
+            <Route path="users" element={
+              <RequirePermission permission="users.view">
+                <UsersListPage />
+              </RequirePermission>
+            } />
+            <Route path="users/new" element={
+              <RequirePermission permission="users.create">
+                <CreateUserPage />
+              </RequirePermission>
+            } />
+            <Route path="users/:id" element={
+              <RequirePermission permission="users.view">
+                <UserDetailPage />
+              </RequirePermission>
+            } />
 
-            {/* Entities */}
-            <Route path="entities" element={<EntitiesPage />} />
-            <Route path="entities/new" element={<EntityFormPage />} />
-            <Route path="entities/:id/edit" element={<EntityFormPage />} />
-            <Route path="entities/:id" element={<EntityDetailPage />} />
+            {/* ⭐ Entities */}
+            <Route path="entities" element={
+              <RequirePermission permission="entities.view">
+                <EntitiesPage />
+              </RequirePermission>
+            } />
+            <Route path="entities/new" element={
+              <RequirePermission permission="entities.create">
+                <EntityFormPage />
+              </RequirePermission>
+            } />
+            <Route path="entities/:id/edit" element={
+              <RequirePermission permission="entities.edit">
+                <EntityFormPage />
+              </RequirePermission>
+            } />
+            <Route path="entities/:id" element={
+              <RequirePermission permission="entities.view">
+                <EntityDetailPage />
+              </RequirePermission>
+            } />
 
-            {/* Permissions */}
-            <Route path="permissions" element={<PermissionsDashboard />} />
-            <Route path="permissions/bulk-import" element={<BulkImportPage />} />
-            <Route path="permissions/users/:id" element={<UserPermissionsPage />} />
+            {/* ⭐ Permissions & Roles */}
+            <Route path="permissions" element={
+              <RequirePermission permission="permissions.manage">
+                <PermissionsDashboard />
+              </RequirePermission>
+            } />
+            <Route path="permissions/bulk-import" element={
+              <RequirePermission permission="bulk_import.execute">
+                <BulkImportPage />
+              </RequirePermission>
+            } />
+            <Route path="permissions/users/:id" element={
+              <RequirePermission permission="permissions.admin_override">
+                <UserPermissionsPage />
+              </RequirePermission>
+            } />
+            <Route path="roles" element={
+              <RequirePermission permission="roles.view">
+                <RolesPage />
+              </RequirePermission>
+            } />
 
-            {/* Roles */}
-            <Route path="roles" element={<RolesPage />} />
-
-            {/* Themes */}
-            <Route path="themes" element={<ThemesPage />} />
-            <Route path="themes/reset" element={<ResetUserThemesPage />} />
+            {/* ⭐ Themes */}
+            <Route path="themes" element={
+              <RequirePermission permission="themes.view">
+                <ThemesPage />
+              </RequirePermission>
+            } />
+            <Route path="themes/reset" element={
+              <RequirePermission permission="users.manage">
+                <ResetUserThemesPage />
+              </RequirePermission>
+            } />
           </Route>
 
           <Route path="/admin/*" element={<AdminRedirect />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/notifications" element={
+            <RequirePermission permission="notifications.view">
+              <NotificationsPage />
+            </RequirePermission>
+          } />
         </Route>
 
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

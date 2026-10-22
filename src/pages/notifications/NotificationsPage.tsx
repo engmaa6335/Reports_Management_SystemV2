@@ -11,9 +11,11 @@ import {
   Search,
   Check,
   X,
+  Lock,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store';
 import { useNotificationsStore } from '../../stores/notifications-store';
+import { usePermission } from '../../hooks/usePermission'; // ⭐ استيراد الـ Hook
 import type { NotificationWithDetails } from '../../stores/notifications-store';
 import { Button, Card, Input } from '../../components/ui';
 import { Loading } from '../../components/ui/Loading';
@@ -113,6 +115,10 @@ export function NotificationsPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  
+  // ⭐ فحص صلاحية عرض التنبيهات
+  const { allowed: canView, loading: checkingPerm } = usePermission('notifications.view');
+
   const {
     notifications,
     unreadCount,
@@ -131,7 +137,7 @@ export function NotificationsPage() {
   // Load + Realtime
   // ================================================
   useEffect(() => {
-    if (user) {
+    if (user && canView) {
       loadNotifications(user.id);
       subscribeToRealtime(user.id);
 
@@ -139,7 +145,7 @@ export function NotificationsPage() {
         unsubscribe();
       };
     }
-  }, [user, loadNotifications, subscribeToRealtime, unsubscribe]);
+  }, [user, canView, loadNotifications, subscribeToRealtime, unsubscribe]);
 
   // ================================================
   // Filtering
@@ -147,7 +153,6 @@ export function NotificationsPage() {
   const filteredNotifications = useMemo(() => {
     let result = notifications;
 
-    // Tab filter
     if (activeTab === 'unread') {
       result = result.filter((n) => !n.is_read);
     } else if (activeTab !== 'all') {
@@ -156,7 +161,6 @@ export function NotificationsPage() {
       );
     }
 
-    // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       result = result.filter(
@@ -169,9 +173,6 @@ export function NotificationsPage() {
     return result;
   }, [notifications, activeTab, searchQuery]);
 
-  // ================================================
-  // Tab Counts
-  // ================================================
   const tabCounts = useMemo(
     () => ({
       all: notifications.length,
@@ -189,12 +190,7 @@ export function NotificationsPage() {
     [notifications]
   );
 
-  // ================================================
-  // Handlers
-  // ================================================
-  const handleNotificationClick = async (
-    notif: NotificationWithDetails
-  ) => {
+  const handleNotificationClick = async (notif: NotificationWithDetails) => {
     if (!notif.is_read) {
       await markAsRead(notif.recipient_id);
     }
@@ -220,24 +216,28 @@ export function NotificationsPage() {
     }
   };
 
-  const handleMarkSingleRead = async (
-    e: React.MouseEvent,
-    recipientId: string
-  ) => {
+  const handleMarkSingleRead = async (e: React.MouseEvent, recipientId: string) => {
     e.stopPropagation();
     await markAsRead(recipientId);
   };
 
   // ================================================
-  // Render — Loading
+  // Render Guards
   // ================================================
-  if (loading && notifications.length === 0) {
+  if (checkingPerm || (loading && notifications.length === 0 && canView)) {
     return <Loading message={t('notifications_page.loading')} />;
   }
 
-  // ================================================
-  // Render — Page
-  // ================================================
+  if (!canView) {
+    return (
+      <Card padding="lg" className="text-center py-16">
+        <Lock className="w-12 h-12 mx-auto mb-4 text-text-muted opacity-50" />
+        <h2 className="text-xl font-bold text-text mb-2">لا تملك صلاحية الوصول</h2>
+        <p className="text-text-secondary">ليس لديك صلاحية لعرض التنبيهات.</p>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -271,43 +271,16 @@ export function NotificationsPage() {
 
       {/* Filters */}
       <Card padding="none">
-        {/* Tabs */}
         <div className="border-b border-border overflow-x-auto">
           <div className="flex items-center gap-1 px-2 min-w-max">
-            <TabButton
-              active={activeTab === 'all'}
-              onClick={() => setActiveTab('all')}
-              label={t('notifications_page.tab_all')}
-              count={tabCounts.all}
-            />
-            <TabButton
-              active={activeTab === 'unread'}
-              onClick={() => setActiveTab('unread')}
-              label={t('notifications_page.tab_unread')}
-              count={tabCounts.unread}
-            />
-            <TabButton
-              active={activeTab === 'report'}
-              onClick={() => setActiveTab('report')}
-              label={t('notifications_page.tab_report')}
-              count={tabCounts.report}
-            />
-            <TabButton
-              active={activeTab === 'aggregate'}
-              onClick={() => setActiveTab('aggregate')}
-              label={t('notifications_page.tab_aggregate')}
-              count={tabCounts.aggregate}
-            />
-            <TabButton
-              active={activeTab === 'admin'}
-              onClick={() => setActiveTab('admin')}
-              label={t('notifications_page.tab_admin')}
-              count={tabCounts.admin}
-            />
+            <TabButton active={activeTab === 'all'} onClick={() => setActiveTab('all')} label={t('notifications_page.tab_all')} count={tabCounts.all} />
+            <TabButton active={activeTab === 'unread'} onClick={() => setActiveTab('unread')} label={t('notifications_page.tab_unread')} count={tabCounts.unread} />
+            <TabButton active={activeTab === 'report'} onClick={() => setActiveTab('report')} label={t('notifications_page.tab_report')} count={tabCounts.report} />
+            <TabButton active={activeTab === 'aggregate'} onClick={() => setActiveTab('aggregate')} label={t('notifications_page.tab_aggregate')} count={tabCounts.aggregate} />
+            <TabButton active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} label={t('notifications_page.tab_admin')} count={tabCounts.admin} />
           </div>
         </div>
 
-        {/* Search */}
         <div className="p-4 flex items-center gap-3">
           <div className="flex-1">
             <Input
@@ -317,13 +290,8 @@ export function NotificationsPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-
           {searchQuery && (
-            <Button
-              variant="ghost"
-              icon={<X className="w-4 h-4" />}
-              onClick={() => setSearchQuery('')}
-            >
+            <Button variant="ghost" icon={<X className="w-4 h-4" />} onClick={() => setSearchQuery('')}>
               {t('notifications_page.clear')}
             </Button>
           )}
@@ -338,14 +306,10 @@ export function NotificationsPage() {
               <Bell className="w-10 h-10 text-text-muted" />
             </div>
             <h2 className="text-xl font-semibold text-text mb-2">
-              {notifications.length === 0
-                ? t('notifications_page.no_notifications')
-                : t('notifications_page.no_results')}
+              {notifications.length === 0 ? t('notifications_page.no_notifications') : t('notifications_page.no_results')}
             </h2>
             <p className="text-text-secondary">
-              {notifications.length === 0
-                ? t('notifications_page.no_notifications_desc')
-                : t('notifications_page.try_change_filters')}
+              {notifications.length === 0 ? t('notifications_page.no_notifications_desc') : t('notifications_page.try_change_filters')}
             </p>
           </div>
         </Card>
@@ -362,56 +326,29 @@ export function NotificationsPage() {
               <Card
                 key={notif.recipient_id}
                 padding="md"
-                className={`
-                  transition-all cursor-pointer hover:shadow-md
-                  ${!notif.is_read ? 'border-primary/30 bg-primary/5' : ''}
-                `}
+                className={`transition-all cursor-pointer hover:shadow-md ${!notif.is_read ? 'border-primary/30 bg-primary/5' : ''}`}
               >
-                <div
-                  onClick={() => handleNotificationClick(notif)}
-                  className="flex items-start gap-4"
-                >
-                  {/* Icon */}
-                  <div
-                    className={`
-                      w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0
-                      ${getIconColor(type?.category || null)}
-                    `}
-                  >
+                <div onClick={() => handleNotificationClick(notif)} className="flex items-start gap-4">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${getIconColor(type?.category || null)}`}>
                     {getIconForCategory(type?.category || null)}
                   </div>
 
-                  {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-3 mb-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3
-                          className={`font-semibold ${
-                            !notif.is_read ? 'text-primary' : 'text-text'
-                          }`}
-                        >
+                        <h3 className={`font-semibold ${!notif.is_read ? 'text-primary' : 'text-text'}`}>
                           {notif.title}
                         </h3>
-                        {!notif.is_read && (
-                          <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />
-                        )}
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full font-medium ${priorityBadge.className}`}
-                        >
+                        {!notif.is_read && <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0" />}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${priorityBadge.className}`}>
                           {priorityBadge.label}
                         </span>
                       </div>
 
-                      {/* Actions */}
                       {!notif.is_read && (
                         <button
-                          onClick={(e) =>
-                            handleMarkSingleRead(e, notif.recipient_id)
-                          }
-                          className="
-                            p-1.5 rounded-lg hover:bg-primary/10 
-                            text-primary transition-colors flex-shrink-0
-                          "
+                          onClick={(e) => handleMarkSingleRead(e, notif.recipient_id)}
+                          className="p-1.5 rounded-lg hover:bg-primary/10 text-primary transition-colors flex-shrink-0"
                           title={t('notifications_page.mark_as_read')}
                         >
                           <Check className="w-4 h-4" />
@@ -420,9 +357,7 @@ export function NotificationsPage() {
                     </div>
 
                     {notif.body && (
-                      <p className="text-sm text-text-secondary mb-2">
-                        {notif.body}
-                      </p>
+                      <p className="text-sm text-text-secondary mb-2">{notif.body}</p>
                     )}
 
                     <div className="flex items-center gap-3 text-xs text-text-muted flex-wrap">
@@ -473,24 +408,11 @@ function TabButton({ active, onClick, label, count }: TabButtonProps) {
       className={`
         flex items-center gap-2 px-4 py-3 text-sm font-medium
         border-b-2 transition-colors whitespace-nowrap
-        ${
-          active
-            ? 'border-primary text-primary'
-            : 'border-transparent text-text-secondary hover:text-text hover:border-border'
-        }
+        ${active ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text hover:border-border'}
       `}
     >
       <span>{label}</span>
-      <span
-        className={`
-          inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold
-          ${
-            active
-              ? 'bg-primary text-white'
-              : 'bg-bg-secondary text-text-secondary'
-          }
-        `}
-      >
+      <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold ${active ? 'bg-primary text-white' : 'bg-bg-secondary text-text-secondary'}`}>
         {count}
       </span>
     </button>

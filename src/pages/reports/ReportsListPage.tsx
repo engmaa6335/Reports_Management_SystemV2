@@ -21,6 +21,7 @@ import { useReportsStore } from '../../stores/reports-store';
 import { useTemplatesStore } from '../../stores/templates-store';
 import { Button, Card, Input } from '../../components/ui';
 import { Loading } from '../../components/ui/Loading';
+import { supabase } from '../../lib/supabase';
 
 // ================================================
 // Helpers
@@ -84,20 +85,6 @@ function getPeriodLabel(
   return labels[periodType] || periodType;
 }
 
-function canCreateReports(roleCode: string | undefined): boolean {
-  if (!roleCode) return false;
-  return [
-    'tech_support',
-    'edu_specialist',
-    'qa_coordinator',
-    'qa_chief',
-    'school_manager',
-    'tls_manager',
-    'region_manager',
-    'region_assistant',
-  ].includes(roleCode);
-}
-
 function getTemplateKind(
   templateCode: string | undefined
 ): 'tls' | 'rl' | 'other' {
@@ -149,11 +136,76 @@ export function ReportsListPage() {
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // ⭐ حالة الصلاحيات
+  const [hasCreatePermission, setHasCreatePermission] = useState(false);
+  const [checkingPermissions, setCheckingPermissions] = useState(true);
+
   const canViewAll = ['tech_support', 'edc_viewer', 'qa_chief'].includes(
     activeEntity?.roleCode || ''
   );
-  const allowCreate = canCreateReports(activeEntity?.roleCode);
   const noTemplates = !templatesLoading && templates.length === 0;
+
+  // ⭐ جلب الصلاحيات باستخدام RPC + الاستماع المباشر (Realtime)
+  useEffect(() => {
+    let subscription: any = null;
+    let intervalId: any = null;
+
+    const checkPermission = async () => {
+      if (!activeEntity?.roleCode) return;
+      
+      try {
+        const { data, error } = await supabase.rpc('check_user_can_create_report');
+        
+        if (error) {
+          console.error('Error checking permission:', error);
+          setHasCreatePermission(false);
+        } else {
+          setHasCreatePermission(data === true);
+        }
+      } catch (err) {
+        console.error(err);
+        setHasCreatePermission(false);
+      } finally {
+        setCheckingPermissions(false);
+      }
+    };
+
+    const init = async () => {
+      setCheckingPermissions(true);
+      await checkPermission();
+
+      // 1. الاستماع لأي تغيير في جدول user_entity_roles
+      subscription = supabase
+        .channel('reports_permissions_listener')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'user_entity_roles' },
+          () => {
+            console.log('🔄 User roles changed, re-checking permission...');
+            checkPermission();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'role_permissions' },
+          () => {
+            console.log('🔄 Role permissions changed, re-checking permission...');
+            checkPermission();
+          }
+        )
+        .subscribe();
+
+      // 2. كخيار احتياطي (في حال لم يعمل Realtime لأي سبب)، نفحص كل 10 ثوانٍ
+      intervalId = setInterval(checkPermission, 10000);
+    };
+
+    init();
+
+    return () => {
+      if (subscription) supabase.removeChannel(subscription);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [activeEntity?.roleCode, activeEntity?.entityId, user?.id]);
 
   useEffect(() => {
     if (user && activeEntity) {
@@ -177,7 +229,6 @@ export function ReportsListPage() {
       return i18n.language === 'ar' ? 'المدرسة' : 'School';
     }
     
-    // للمختصين (TLS أو R.L)
     if (activeEntity?.regionModes?.includes('tls') && !activeEntity?.regionModes?.includes('rl')) {
       return i18n.language === 'ar' ? 'المركز' : 'Center';
     }
@@ -284,7 +335,8 @@ export function ReportsListPage() {
           </p>
         </div>
 
-        {allowCreate && (
+        {/* ⭐ الزر يعتمد على الصلاحية الآن */}
+        {!checkingPermissions && hasCreatePermission && (
           <Button
             variant="primary"
             icon={<Plus className="w-4 h-4" />}
@@ -296,7 +348,7 @@ export function ReportsListPage() {
       </div>
 
       {/* Warning: No templates */}
-      {allowCreate && noTemplates && (
+      {hasCreatePermission && noTemplates && (
         <Card padding="md" className="border-warning/30 bg-warning/5">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
@@ -503,7 +555,7 @@ export function ReportsListPage() {
             </h2>
             <p className="text-text-secondary mb-6 max-w-md mx-auto">
               {reports.length === 0
-                ? allowCreate
+                ? hasCreatePermission
                   ? noTemplates
                     ? t('reports_page.no_templates_in_region', {
                         entity: activeEntity?.entityName || '',
@@ -512,7 +564,7 @@ export function ReportsListPage() {
                   : t('reports_page.no_permission')
                 : t('reports_page.try_change_filters')}
             </p>
-            {reports.length === 0 && allowCreate && !noTemplates && (
+            {reports.length === 0 && hasCreatePermission && !noTemplates && (
               <Button
                 variant="primary"
                 icon={<Plus className="w-4 h-4" />}
@@ -535,7 +587,6 @@ export function ReportsListPage() {
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">
                     {t('reports_page.table_report')}
                   </th>
-                  {/* ⭐ استخدام المتغير الديناميكي هنا */}
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden md:table-cell">
                     {entityColumnLabel}
                   </th>

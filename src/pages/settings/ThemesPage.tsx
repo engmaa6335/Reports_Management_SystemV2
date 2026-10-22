@@ -7,7 +7,11 @@ import { ThemeEditorModal } from './ThemeEditorModal';
 
 export default function ThemesPage() {
   const user = useAuthStore((s) => s.user);
-  const { allowed: canManage } = usePermission('themes.manage');
+  
+  // ⭐ فحص صلاحية العرض والإدارة
+  const { allowed: canView, loading: checkingView } = usePermission('themes.view');
+  const { allowed: canManage, loading: checkingManage } = usePermission('themes.manage');
+
   const [themes, setThemes] = useState<Theme[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Theme | null>(null);
@@ -15,6 +19,7 @@ export default function ThemesPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = async () => {
+    if (!canView) return;
     setLoading(true);
     try {
       setThemes(await listAllThemes());
@@ -25,7 +30,7 @@ export default function ThemesPage() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [canView]);
 
   const onDelete = async (t: Theme) => {
     if (
@@ -45,10 +50,21 @@ export default function ThemesPage() {
     }
   };
 
-  if (loading) {
+  if (checkingView || (loading && canView)) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // ⭐ إخفاء المحتوى بالكامل إذا لم يملك صلاحية العرض
+  if (!canView) {
+    return (
+      <div className="p-6 text-center text-text-secondary">
+        <Lock className="w-12 h-12 mx-auto mb-4 text-text-muted opacity-50" />
+        <h2 className="text-xl font-bold text-text mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لعرض الثيمات. تواصل مع الدعم الفني.</p>
       </div>
     );
   }
@@ -59,11 +75,10 @@ export default function ThemesPage() {
         <div>
           <h1 className="text-2xl font-bold text-text">إدارة الثيمات</h1>
           <p className="text-sm text-text-secondary mt-1">
-            الثيم المرجعي (light) محمي. النظامية محمية من الحذف. العادية قابلة
-            للتعديل والحذف الآمن.
+            الثيم المرجعي (light) محمي. النظامية محمية من الحذف. العادية قابلة للتعديل والحذف الآمن.
           </p>
         </div>
-        {canManage && (
+        {!checkingManage && canManage && (
           <button
             onClick={() => setCreating(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white hover:bg-primary-dark"
@@ -122,8 +137,7 @@ function ThemeCard({
 }) {
   const isCanonical = theme.code === 'light' && theme.is_default;
   const canEdit = canManage && !isCanonical;
-  const canDelete =
-    canManage && !theme.is_system && !theme.is_default && !isCanonical;
+  const canDelete = canManage && !theme.is_system && !theme.is_default && !isCanonical;
 
   return (
     <div className="bg-surface border border-border rounded-xl p-4 shadow-soft">

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useEntitiesStore } from '../../../stores/entities-store';
 import { useEntityStore } from '../../../stores/entity-store';
+import { usePermission } from '../../../hooks/usePermission'; // ⭐ إضافة
 import { Button, Card } from '../../../components/ui';
 import { Loading } from '../../../components/ui/Loading';
 import { ConfirmModal } from '../../../components/ui/ConfirmModal';
@@ -31,39 +32,25 @@ import { ConfirmModal } from '../../../components/ui/ConfirmModal';
 
 function getEntityIcon(typeCode: string | null | undefined): string {
   switch (typeCode) {
-    case 'region':
-      return '🗺️';
-    case 'school':
-      return '🏫';
-    case 'tls_center':
-      return '🏢';
-    case 'edu_unit':
-      return '📚';
-    case 'edc':
-      return '🏛️';
-    case 'qa_unit':
-      return '✅';
-    default:
-      return '📍';
+    case 'region': return '🗺️';
+    case 'school': return '🏫';
+    case 'tls_center': return '🏢';
+    case 'edu_unit': return '📚';
+    case 'edc': return '🏛️';
+    case 'qa_unit': return '✅';
+    default: return '📍';
   }
 }
 
 function getTypeColor(typeCode: string | null | undefined): string {
   switch (typeCode) {
-    case 'region':
-      return '#3b82f6';
-    case 'school':
-      return '#10b981';
-    case 'tls_center':
-      return '#f59e0b';
-    case 'edu_unit':
-      return '#8b5cf6';
-    case 'edc':
-      return '#ef4444';
-    case 'qa_unit':
-      return '#06b6d4';
-    default:
-      return '#6b7280';
+    case 'region': return '#3b82f6';
+    case 'school': return '#10b981';
+    case 'tls_center': return '#f59e0b';
+    case 'edu_unit': return '#8b5cf6';
+    case 'edc': return '#ef4444';
+    case 'qa_unit': return '#06b6d4';
+    default: return '#6b7280';
   }
 }
 
@@ -117,6 +104,15 @@ export function EntityDetailPage() {
   const navigate = useNavigate();
   const { activeEntity } = useEntityStore();
 
+  // ⭐ فحص الصلاحيات
+  const { allowed: canView } = usePermission('entities.view');
+  const { allowed: canEdit } = usePermission('entities.edit');
+  const { allowed: canDelete } = usePermission('entities.delete');
+  const { allowed: canManage } = usePermission('entities.manage');
+
+  const hasEditPermission = canManage || canEdit;
+  const hasDeletePermission = canManage || canDelete;
+
   const {
     selectedEntity: entity,
     loadingDetail,
@@ -158,7 +154,6 @@ export function EntityDetailPage() {
   // ================================================
 
   useEffect(() => {
-    // ⭐ حماية من id غير صالح
     if (!id || id === 'undefined' || id === 'null' || id.length < 10) {
       console.warn('⚠️ EntityDetailPage: invalid id:', id);
       return;
@@ -188,7 +183,7 @@ export function EntityDetailPage() {
   };
 
   const handleToggleActive = () => {
-    if (!entity) return;
+    if (!entity || !hasEditPermission) return;
     const isActive = entity.is_active;
 
     showConfirm({
@@ -210,7 +205,7 @@ export function EntityDetailPage() {
   };
 
   const handleHardDelete = () => {
-    if (!entity) return;
+    if (!entity || !hasDeletePermission) return;
 
     showConfirm({
       title: '⚠️ حذف نهائي',
@@ -239,8 +234,25 @@ export function EntityDetailPage() {
   };
 
   // ================================================
-  // Render — Invalid ID
+  // Render — Guards
   // ================================================
+
+  if (!canView) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Building2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لعرض هذا الكيان.</p>
+        <Button
+          variant="ghost"
+          className="mt-4"
+          onClick={() => navigate('/settings/entities')}
+        >
+          العودة للكيانات
+        </Button>
+      </div>
+    );
+  }
 
   if (!id || id === 'undefined' || id === 'null') {
     return (
@@ -264,17 +276,9 @@ export function EntityDetailPage() {
     );
   }
 
-  // ================================================
-  // Render — Loading
-  // ================================================
-
   if (loadingDetail) {
     return <Loading message="جاري تحميل الكيان..." />;
   }
-
-  // ================================================
-  // Render — Not Found
-  // ================================================
 
   if (!entity) {
     return (
@@ -367,8 +371,9 @@ export function EntityDetailPage() {
           </div>
         </div>
 
-        {isTechSupport && (
-          <div className="flex items-center gap-2">
+        {/* ⭐ أزرار التحكم تعتمد على الصلاحيات */}
+        <div className="flex items-center gap-2">
+          {hasEditPermission && (
             <Button
               variant="ghost"
               icon={
@@ -383,15 +388,19 @@ export function EntityDetailPage() {
             >
               {isActive ? 'تعطيل' : 'تفعيل'}
             </Button>
+          )}
 
+          {hasEditPermission && (
             <Button
               variant="primary"
               icon={<Edit2 className="w-4 h-4" />}
-              onClick={() => navigate(`/admin/entities/${entity.id}/edit`)}
+              onClick={() => navigate(`/settings/entities/${entity.id}/edit`)}
             >
               تعديل
             </Button>
+          )}
 
+          {hasDeletePermission && (
             <Button
               variant="danger"
               icon={<Trash2 className="w-4 h-4" />}
@@ -400,8 +409,8 @@ export function EntityDetailPage() {
             >
               حذف نهائي
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Error */}

@@ -6,7 +6,9 @@ import {
   AlertTriangle,
   Loader2,
   CheckCircle2,
+  Lock,
 } from 'lucide-react';
+import { usePermission } from '../../hooks/usePermission';
 import { Card, Button } from '../../components/ui';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { getActiveRoles, getAllPermissions } from '../../lib/permissions-api';
@@ -40,6 +42,13 @@ interface Permission {
 // ═══════════════════════════════════════════════════════════
 
 export function RolesPage() {
+  // ⭐ فحص الصلاحيات
+  const { allowed: canView, loading: checkingView } = usePermission('roles.view');
+  const { allowed: canManageRoles } = usePermission('roles.manage');
+  const { allowed: canManagePermissions } = usePermission('permissions.manage');
+
+  const canEdit = canManageRoles || canManagePermissions;
+
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
@@ -99,6 +108,7 @@ export function RolesPage() {
 
   useEffect(() => {
     async function load() {
+      if (!canView) return;
       try {
         setLoading(true);
         const [rolesData, permsData] = await Promise.all([
@@ -117,7 +127,7 @@ export function RolesPage() {
       }
     }
     load();
-  }, []);
+  }, [canView]);
 
   // تحميل صلاحيات الدور المحدد
   useEffect(() => {
@@ -185,6 +195,7 @@ export function RolesPage() {
   // ═══════════════════════════════════════════════════════════
 
   const togglePermission = (permissionId: string) => {
+    if (!canEdit) return;
     setRolePermissions((prev) =>
       prev.includes(permissionId)
         ? prev.filter((id) => id !== permissionId)
@@ -193,6 +204,7 @@ export function RolesPage() {
   };
 
   const toggleAllInCategory = (category: string, checked: boolean) => {
+    if (!canEdit) return;
     const categoryIds = filteredPermissions
       .filter((p) => p.category === category)
       .map((p) => p.id);
@@ -207,11 +219,10 @@ export function RolesPage() {
   };
 
   const handleSave = async () => {
-    if (!selectedRole) return;
+    if (!selectedRole || !canEdit) return;
     try {
       setSaving(true);
       
-      // 1. حذف الصلاحيات القديمة التي أُزيلت
       const toRemove = originalRolePermissions.filter(
         (id) => !rolePermissions.includes(id)
       );
@@ -224,7 +235,6 @@ export function RolesPage() {
         if (error) throw error;
       }
 
-      // 2. إضافة الصلاحيات الجديدة
       const toAdd = rolePermissions.filter(
         (id) => !originalRolePermissions.includes(id)
       );
@@ -268,8 +278,26 @@ export function RolesPage() {
   };
 
   // ═══════════════════════════════════════════════════════════
-  // Render
+  // Render Guards
   // ═══════════════════════════════════════════════════════════
+
+  if (checkingView) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لإدارة الأدوار والصلاحيات.</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -278,6 +306,10 @@ export function RolesPage() {
       </div>
     );
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // Main Render
+  // ═══════════════════════════════════════════════════════════
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -351,7 +383,8 @@ export function RolesPage() {
                   <span className="text-sm text-text-muted">
                     {rolePermissions.length} صلاحية مفعلة
                   </span>
-                  {hasChanges && (
+                  {/* ⭐ أزرار الحفظ تظهر فقط لمن يملك الصلاحية */}
+                  {canEdit && hasChanges && (
                     <>
                       <Button variant="ghost" size="sm" onClick={handleCancel}>
                         إلغاء
@@ -414,17 +447,20 @@ export function RolesPage() {
                         <h3 className="text-sm font-bold text-text">
                           {getCategoryLabel(category)} ({perms.length})
                         </h3>
-                        <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={allChecked}
-                            onChange={(e) =>
-                              toggleAllInCategory(category, e.target.checked)
-                            }
-                            className="w-3.5 h-3.5"
-                          />
-                          تحديد الكل
-                        </label>
+                        {/* ⭐ تحديد الكل يظهر فقط لمن يملك الصلاحية */}
+                        {canEdit && (
+                          <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={allChecked}
+                              onChange={(e) =>
+                                toggleAllInCategory(category, e.target.checked)
+                              }
+                              className="w-3.5 h-3.5"
+                            />
+                            تحديد الكل
+                          </label>
+                        )}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         {perms.map((perm) => {
@@ -433,7 +469,8 @@ export function RolesPage() {
                             <label
                               key={perm.id}
                               className={`
-                                flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-colors
+                                flex items-start gap-2 p-2 rounded-lg transition-colors
+                                ${canEdit ? 'cursor-pointer' : 'cursor-default'}
                                 ${
                                   checked
                                     ? 'bg-success/5 border border-success/30'
@@ -446,6 +483,7 @@ export function RolesPage() {
                                 checked={checked}
                                 onChange={() => togglePermission(perm.id)}
                                 className="mt-0.5 w-4 h-4"
+                                disabled={!canEdit}
                               />
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-text">
@@ -510,3 +548,5 @@ function getCategoryLabel(category: string): string {
   };
   return labels[category] || category;
 }
+
+export default RolesPage;

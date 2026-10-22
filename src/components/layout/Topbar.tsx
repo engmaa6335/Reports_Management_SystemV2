@@ -15,7 +15,7 @@ import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore } from '../../stores/entity-store';
 import { usePermission } from '../../hooks/usePermission';
 import { NotificationBell } from '../notifications/NotificationBell';
-import { supabase } from '../../lib/supabase'; // ⭐ لاستخدام supabase
+import { supabase } from '../../lib/supabase';
 
 interface TopbarProps {
   onToggleSidebar: () => void;
@@ -28,9 +28,12 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
   const { activeEntity, availableEntities } = useEntityStore();
   const { allowed: canManageThemes } = usePermission('themes.manage');
   const { allowed: canManageUsers } = usePermission('users.manage');
+  
+  // ⭐ فحص صلاحية التنبيهات للشريط العلوي
+  const { allowed: canViewNotifications } = usePermission('notifications.view');
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [langMenuOpen, setLangMenuOpen] = useState(false); // ⭐ حالة قائمة اللغة
+  const [langMenuOpen, setLangMenuOpen] = useState(false);
 
   const safeAvailableEntities = availableEntities ?? [];
   const safeRegionModes: ('rl' | 'tls')[] = activeEntity?.regionModes ?? [];
@@ -48,7 +51,6 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
     navigate('/login');
   };
 
-  // ⭐ دالة تغيير اللغة
   const handleChangeLanguage = async (lang: 'ar' | 'en') => {
     if (lang === i18n.language) {
       setLangMenuOpen(false);
@@ -170,7 +172,8 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
           )}
         </div>
 
-        <NotificationBell />
+        {/* ⭐ إخفاء جرس التنبيهات إذا لم يملك الصلاحية */}
+        {canViewNotifications && <NotificationBell />}
 
         <div className="relative">
           <button

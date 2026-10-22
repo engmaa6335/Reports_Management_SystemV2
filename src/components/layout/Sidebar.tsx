@@ -17,6 +17,7 @@ import {
   Upload,
   Grid,
   RotateCcw,
+  Lock,
 } from 'lucide-react';
 import { useEntityStore } from '../../stores/entity-store';
 import { usePermission } from '../../hooks/usePermission';
@@ -53,16 +54,32 @@ export function Sidebar({ open }: SidebarProps) {
   const userRole = activeEntity?.roleCode;
   const isRTL = i18n.dir() === 'rtl';
 
+  // ⭐ فحص الصلاحيات (بناءً على الصلاحيات الأساسية التي تظهر في صورتك)
+  const { allowed: canViewNotifications } = usePermission('notifications.view');
+  
+  // التقارير
+  const { allowed: canViewReports } = usePermission('reports.view');
+  const { allowed: canViewOwnReports } = usePermission('reports.view.own');
+  const hasReportsAccess = canViewReports || canViewOwnReports;
+
+  // التجميعيات
+  const { allowed: canViewAggregates } = usePermission('aggregates.view');
+  const { allowed: canViewOwnAggregates } = usePermission('aggregates.view.own');
+  const hasAggregatesAccess = canViewAggregates || canViewOwnAggregates;
+
+  // الإعدادات
   const { allowed: canManageThemes } = usePermission('themes.manage');
   const { allowed: canManageUsers } = usePermission('users.manage');
   const { allowed: canManageTemplates } = usePermission('templates.manage');
   const { allowed: canManageSettings } = usePermission('settings.manage');
+  const { allowed: canViewSettings } = usePermission('settings.view');
 
   const canAccessSettings =
     canManageThemes ||
     canManageUsers ||
     canManageTemplates ||
-    canManageSettings;
+    canManageSettings ||
+    canViewSettings;
 
   const [settingsPopupOpen, setSettingsPopupOpen] = useState(false);
   const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
@@ -117,42 +134,49 @@ export function Sidebar({ open }: SidebarProps) {
       label: t('admin.templates'),
       icon: <LayoutTemplate className="w-4 h-4" />,
       path: '/settings/templates',
+      permission: 'templates.view',
     },
     {
       id: 'notifications-admin',
       label: t('admin.notifications'),
       icon: <Bell className="w-4 h-4" />,
       path: '/settings/notifications',
+      permission: 'notifications.manage',
     },
     {
       id: 'users',
       label: t('admin.users'),
       icon: <Users className="w-4 h-4" />,
       path: '/settings/users',
+      permission: 'users.view',
     },
     {
       id: 'entities',
       label: t('admin.entities'),
       icon: <Building2 className="w-4 h-4" />,
       path: '/settings/entities',
+      permission: 'entities.view',
     },
     {
       id: 'permissions',
       label: t('admin.roles'),
       icon: <Shield className="w-4 h-4" />,
       path: '/settings/permissions',
+      permission: 'permissions.manage',
     },
     {
       id: 'roles-matrix',
       label: t('settings.title'),
       icon: <Grid className="w-4 h-4" />,
       path: '/settings/roles',
+      permission: 'roles.view',
     },
     {
       id: 'bulk-import',
       label: t('common.import'),
       icon: <Upload className="w-4 h-4" />,
       path: '/settings/permissions/bulk-import',
+      permission: 'bulk_import.execute',
       badge: 'Excel',
     },
     {
@@ -160,7 +184,7 @@ export function Sidebar({ open }: SidebarProps) {
       label: t('admin.themes'),
       icon: <Palette className="w-4 h-4" />,
       path: '/settings/themes',
-      permission: 'themes.manage',
+      permission: 'themes.view',
     },
     {
       id: 'themes-reset',
@@ -174,24 +198,42 @@ export function Sidebar({ open }: SidebarProps) {
   const isPermissionGranted = (permission?: string) => {
     if (!permission) return true;
     if (permission === 'themes.manage') return canManageThemes;
+    if (permission === 'themes.view') return canManageThemes; // أو canViewThemes إذا أضفتها
     if (permission === 'users.manage') return canManageUsers;
+    if (permission === 'users.view') return canManageUsers; // يمكنك إضافة usePermission('users.view') إذا أردت
     if (permission === 'templates.manage') return canManageTemplates;
+    if (permission === 'templates.view') return canManageTemplates;
     if (permission === 'settings.manage') return canManageSettings;
+    if (permission === 'settings.view') return canViewSettings;
     return true;
   };
 
   const visibleItems = MENU_ITEMS.filter((item) => {
+    // ⭐ إخفاء الرئيسية (دائماً تظهر)
+    if (item.id === 'home') return true;
+
+    // ⭐ إخفاء "تقاريري" إذا لم يملك أي صلاحية عرض
+    if (item.id === 'reports') return hasReportsAccess;
+
+    // ⭐ إخفاء "التقارير التجميعية" إذا لم يملك أي صلاحية عرض
+    if (item.id === 'aggregates') return hasAggregatesAccess;
+
+    // ⭐ إخفاء "التنبيهات" إذا لم يملك صلاحية العرض
+    if (item.id === 'notifications') return canViewNotifications;
+
+    // ⭐ إخفاء "الإعدادات" إذا لم يملك أي صلاحية إعدادات
     if (item.isSettings) return canAccessSettings;
-    if (item.permission && !isPermissionGranted(item.permission)) return false;
-    if (item.roles && item.roles.length > 0) {
-      return userRole && item.roles.includes(userRole);
-    }
+
     return true;
   });
 
-  const visibleSubItems = SETTINGS_SUB_ITEMS.filter((sub) =>
-    isPermissionGranted(sub.permission)
-  );
+  const visibleSubItems = SETTINGS_SUB_ITEMS.filter((sub) => {
+    // ⭐ التصفية الدقيقة داخل الإعدادات
+    if (sub.id === 'themes' && !canManageThemes) return false;
+    if (sub.id === 'themes-reset' && !canManageUsers) return false;
+    
+    return isPermissionGranted(sub.permission);
+  });
 
   useEffect(() => {
     setSettingsPopupOpen(false);
@@ -226,21 +268,12 @@ export function Sidebar({ open }: SidebarProps) {
     e.preventDefault();
     if (settingsButtonRef.current) {
       const rect = settingsButtonRef.current.getBoundingClientRect();
-      
-      // رفع القائمة قليلاً للأعلى (نطرح 8 بكسل من top)
       const top = rect.top - 8; 
-      
-      // حساب الموضع الأفقي مع التأكد من عدم تجاوز حدود الشاشة
       let left = isRTL ? rect.left - 260 : rect.right + 8;
-      
-      // منع القائمة من الخروج من الجانب الأيسر للشاشة
       if (left < 8) left = 8;
-      
-      // منع القائمة من الخروج من الجانب الأيمن للشاشة
       if (left + 260 > window.innerWidth - 8) {
         left = window.innerWidth - 260 - 8;
       }
-
       setPopupPosition({ top, left });
     }
     setSettingsPopupOpen((prev) => !prev);
@@ -265,13 +298,7 @@ export function Sidebar({ open }: SidebarProps) {
           fixed top-16 bottom-0 start-0 bg-surface border-e border-border
           transition-transform duration-300 ease-in-out z-30
           w-64
-          ${
-            open
-              ? 'translate-x-0'
-              : isRTL
-              ? 'translate-x-full'
-              : '-translate-x-full'
-          }
+          ${open ? 'translate-x-0' : isRTL ? 'translate-x-full' : '-translate-x-full'}
         `}
       >
         <nav className="p-3 space-y-1 overflow-y-auto h-full pb-20">
@@ -286,11 +313,7 @@ export function Sidebar({ open }: SidebarProps) {
                   className={`
                     w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg
                     transition-colors text-sm font-medium text-right
-                    ${
-                      isActive || settingsPopupOpen
-                        ? 'bg-primary text-white shadow-soft'
-                        : 'text-text-secondary hover:bg-bg-secondary hover:text-text'
-                    }
+                    ${isActive || settingsPopupOpen ? 'bg-primary text-white shadow-soft' : 'text-text-secondary hover:bg-bg-secondary hover:text-text'}
                   `}
                 >
                   <span className="flex items-center gap-3">
@@ -298,9 +321,7 @@ export function Sidebar({ open }: SidebarProps) {
                     <span className="truncate">{item.label}</span>
                   </span>
                   <ChevronLeft
-                    className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${
-                      settingsPopupOpen ? 'rotate-90' : '-rotate-90'
-                    }`}
+                    className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${settingsPopupOpen ? 'rotate-90' : '-rotate-90'}`}
                   />
                 </button>
               );
@@ -310,17 +331,11 @@ export function Sidebar({ open }: SidebarProps) {
                 key={item.id}
                 to={item.path}
                 end={item.path === '/dashboard'}
-                className={({ isActive }) =>
-                  `
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg
-                    transition-colors text-sm font-medium
-                    ${
-                      isActive
-                        ? 'bg-primary text-white shadow-soft'
-                        : 'text-text-secondary hover:bg-bg-secondary hover:text-text'
-                    }
-                  `
-                }
+                className={({ isActive }) => `
+                  flex items-center gap-3 px-3 py-2.5 rounded-lg
+                  transition-colors text-sm font-medium
+                  ${isActive ? 'bg-primary text-white shadow-soft' : 'text-text-secondary hover:bg-bg-secondary hover:text-text'}
+                `}
               >
                 <span className="flex-shrink-0">{item.icon}</span>
                 <span className="truncate">{item.label}</span>
@@ -336,7 +351,7 @@ export function Sidebar({ open }: SidebarProps) {
         </div>
       </aside>
 
-      {/* Desktop Popup — Fixed Positioning */}
+      {/* Desktop Popup */}
       {!isMobile && settingsPopupOpen && (
         <div
           ref={popupRef}
@@ -345,7 +360,6 @@ export function Sidebar({ open }: SidebarProps) {
             top: popupPosition.top,
             left: popupPosition.left,
             width: '260px',
-            // التأكد من أن القائمة لا تتجاوز ارتفاع الشاشة
             maxHeight: 'calc(100vh - 100px)',
             overflowY: 'auto',
           }}
@@ -371,11 +385,7 @@ export function Sidebar({ open }: SidebarProps) {
                   className={`
                     w-full flex items-center gap-3 px-4 py-2.5 text-sm
                     transition-colors text-right border-r-4
-                    ${
-                      isActive
-                        ? 'bg-primary/10 text-primary border-r-primary font-medium'
-                        : 'text-text-secondary hover:bg-bg-secondary hover:text-text border-r-transparent'
-                    }
+                    ${isActive ? 'bg-primary/10 text-primary border-r-primary font-medium' : 'text-text-secondary hover:bg-bg-secondary hover:text-text border-r-transparent'}
                   `}
                 >
                   <span className="flex-shrink-0">{subItem.icon}</span>
@@ -434,11 +444,7 @@ export function Sidebar({ open }: SidebarProps) {
                     className={`
                       w-full flex items-center gap-3 px-4 py-3 text-sm rounded-lg
                       transition-colors text-right
-                      ${
-                        isActive
-                          ? 'bg-primary/10 text-primary font-medium'
-                          : 'text-text-secondary hover:bg-bg-secondary'
-                      }
+                      ${isActive ? 'bg-primary/10 text-primary font-medium' : 'text-text-secondary hover:bg-bg-secondary'}
                     `}
                   >
                     <span className="flex-shrink-0">{subItem.icon}</span>
@@ -460,3 +466,5 @@ export function Sidebar({ open }: SidebarProps) {
     </>
   );
 }
+
+export default Sidebar;

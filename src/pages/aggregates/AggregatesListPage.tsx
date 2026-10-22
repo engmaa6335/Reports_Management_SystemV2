@@ -14,6 +14,7 @@ import { useEntityStore } from '../../stores/entity-store';
 import { useAggregatesStore } from '../../stores/aggregates-store';
 import { DeleteAggregateModal } from '../../components/aggregates/DeleteAggregateModal';
 import { Button, Card } from '../../components/ui';
+import { usePermission } from '../../hooks/usePermission'; // ⭐ إضافة الاستيراد
 import type { PeriodType, ReportType } from '../../types/aggregates';
 
 type QuickTab = 'all' | 'RL' | 'TLS';
@@ -37,6 +38,9 @@ export function AggregatesListPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { activeEntity } = useEntityStore();
+
+  // ⭐ استخدام الـ Hook للتحقق من الصلاحية
+  const { allowed: canCreateAggregate, loading: checkingAggPerms } = usePermission('aggregates.create');
 
   const {
     aggregates,
@@ -86,8 +90,7 @@ export function AggregatesListPage() {
     if (search.trim()) {
       const s = search.toLowerCase().trim();
       result = result.filter((a) => {
-        const templateName =
-          a.aggregate_template?.name_ar?.toLowerCase() || '';
+        const templateName = a.aggregate_template?.name_ar?.toLowerCase() || '';
         const entityName = a.entity?.name_ar?.toLowerCase() || '';
         const creatorName = a.creator?.full_name?.toLowerCase() || '';
         return (
@@ -215,13 +218,16 @@ export function AggregatesListPage() {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          icon={<span className="text-lg leading-none">+</span>}
-          onClick={() => navigate('/aggregates/new')}
-        >
-          {t('aggregates_page.create_aggregate')}
-        </Button>
+        {/* ⭐ الزر يعتمد على الصلاحية الآن */}
+        {!checkingAggPerms && canCreateAggregate && (
+          <Button
+            variant="primary"
+            icon={<span className="text-lg leading-none">+</span>}
+            onClick={() => navigate('/aggregates/new')}
+          >
+            {t('aggregates_page.create_aggregate')}
+          </Button>
+        )}
       </div>
 
       {/* Error */}
@@ -443,14 +449,17 @@ export function AggregatesListPage() {
             <p className="mb-6 text-sm text-text-secondary">
               {t('aggregates_page.no_aggregates_desc')}
             </p>
-            <Button
-              variant="primary"
-              size="lg"
-              icon={<span className="text-lg leading-none">+</span>}
-              onClick={() => navigate('/aggregates/new')}
-            >
-              {t('aggregates_page.create_aggregate')}
-            </Button>
+            {/* ⭐ الزر يعتمد على الصلاحية */}
+            {canCreateAggregate && (
+              <Button
+                variant="primary"
+                size="lg"
+                icon={<span className="text-lg leading-none">+</span>}
+                onClick={() => navigate('/aggregates/new')}
+              >
+                {t('aggregates_page.create_aggregate')}
+              </Button>
+            )}
           </div>
         </Card>
       )}

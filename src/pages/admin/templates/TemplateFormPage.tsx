@@ -8,8 +8,10 @@ import {
   CheckCircle2,
   XCircle,
   Plus,
+  Lock,
 } from 'lucide-react';
 import { useTemplatesAdminStore } from '../../../stores/templates-admin-store';
+import { usePermission } from '../../../hooks/usePermission';
 import { Button, Card } from '../../../components/ui';
 import { Loading } from '../../../components/ui/Loading';
 import * as api from '../../../lib/templates-admin-api';
@@ -46,7 +48,6 @@ const EMPTY_FORM: FormState = {
   is_active: true,
 };
 
-// ⭐ قيم report_kind المسموحة (من DB constraint)
 const REPORT_KIND_OPTIONS = [
   { value: '', label: '— بدون —' },
   { value: 'visit', label: 'زيارة' },
@@ -61,6 +62,9 @@ export function TemplateFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEdit = !!id;
+
+  // ⭐ فحص الصلاحية
+  const { allowed: canManage, loading: checkingManage } = usePermission('templates.manage');
 
   const {
     categories,
@@ -90,10 +94,12 @@ export function TemplateFormPage() {
   // ═══════════════════════════════════════════
 
   useEffect(() => {
-    loadCategories();
-    loadRoles();
-    loadEntityTypes();
-  }, [loadCategories, loadRoles, loadEntityTypes]);
+    if (canManage) {
+      loadCategories();
+      loadRoles();
+      loadEntityTypes();
+    }
+  }, [loadCategories, loadRoles, loadEntityTypes, canManage]);
 
   // ⭐ تحميل القالب عند التعديل
   useEffect(() => {
@@ -131,23 +137,23 @@ export function TemplateFormPage() {
     }
 
     const timer = setTimeout(async () => {
-  setCheckingCode(true);
-  try {
-    const templates = await api.listTemplates({
-      search: form.code.trim(),
-      categoryCode: null,
-      isActive: null,
-    });
-    const exists = templates.some(
-      (t) => t.code.toLowerCase() === form.code.trim().toLowerCase()
-    );
-    setCodeAvailable(!exists);
-  } catch {
-    setCodeAvailable(null);
-  } finally {
-    setCheckingCode(false);
-  }
-}, 500);
+      setCheckingCode(true);
+      try {
+        const templates = await api.listTemplates({
+          search: form.code.trim(),
+          categoryCode: null,
+          isActive: null,
+        });
+        const exists = templates.some(
+          (t) => t.code.toLowerCase() === form.code.trim().toLowerCase()
+        );
+        setCodeAvailable(!exists);
+      } catch {
+        setCodeAvailable(null);
+      } finally {
+        setCheckingCode(false);
+      }
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [form.code, isEdit]);
@@ -189,6 +195,11 @@ export function TemplateFormPage() {
   };
 
   const handleSubmit = async () => {
+    if (!canManage) {
+      alert('ليس لديك صلاحية لتنفيذ هذا الإجراء.');
+      return;
+    }
+
     if (!validate()) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -247,8 +258,29 @@ export function TemplateFormPage() {
   );
 
   // ═══════════════════════════════════════════
-  // Render — Loading (Edit only)
+  // Render Guards
   // ═══════════════════════════════════════════
+
+  if (checkingManage) {
+    return <Loading message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  if (!canManage) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لإضافة أو تعديل القوالب.</p>
+        <Button
+          variant="ghost"
+          className="mt-4"
+          onClick={() => navigate('/settings/templates')}
+        >
+          العودة للقوالب
+        </Button>
+      </div>
+    );
+  }
 
   if (isEdit && loadingDetail) {
     return <Loading message="جاري تحميل القالب..." />;
@@ -293,7 +325,7 @@ export function TemplateFormPage() {
           variant="primary"
           icon={<Save className="w-4 h-4" />}
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={saving || !canManage}
           loading={saving}
         >
           {isEdit ? 'حفظ التعديلات' : 'إنشاء القالب'}
@@ -586,7 +618,7 @@ export function TemplateFormPage() {
           size="lg"
           icon={<Save className="w-5 h-5" />}
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={saving || !canManage}
           loading={saving}
         >
           {isEdit ? 'حفظ التعديلات' : 'إنشاء القالب'}
@@ -595,3 +627,5 @@ export function TemplateFormPage() {
     </div>
   );
 }
+
+export default TemplateFormPage;

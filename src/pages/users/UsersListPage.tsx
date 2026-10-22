@@ -7,14 +7,16 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Lock,
 } from 'lucide-react';
 import { useUsersStore } from '../../stores/users-store';
+import { usePermission } from '../../hooks/usePermission';
 import { Button, Card } from '../../components/ui';
 import { Loading } from '../../components/ui/Loading';
 import type { RoleGroup } from '../../types/users';
 
 // ================================================
-// Tab Config — كل دور مستقل
+// Tab Config
 // ================================================
 
 interface TabConfig {
@@ -42,6 +44,13 @@ const TABS: TabConfig[] = [
 
 export function UsersListPage() {
   const navigate = useNavigate();
+
+  // ⭐ فحص الصلاحيات
+  const { allowed: canView, loading: checkingView } = usePermission('users.view');
+  const { allowed: canCreate } = usePermission('users.create');
+  const { allowed: canManage } = usePermission('users.manage');
+
+  const hasCreatePermission = canManage || canCreate;
 
   const {
     allUsers,
@@ -71,9 +80,11 @@ export function UsersListPage() {
   // ================================================
 
   useEffect(() => {
-    loadRoles();
-    loadUsers();
-  }, [loadRoles, loadUsers]);
+    if (canView) {
+      loadRoles();
+      loadUsers();
+    }
+  }, [loadRoles, loadUsers, canView]);
 
   // Debounced search
   useEffect(() => {
@@ -102,16 +113,12 @@ export function UsersListPage() {
     const scrolledFromStart = currentScroll > 2;
     const scrolledFromEnd = currentScroll < maxScroll - 2;
 
-    // في RTL نعكس المنطق:
-    // - سهم "اليسار البصري" يظهر إذا كان هناك محتوى مخفي على اليسار
-    // - سهم "اليمين البصري" يظهر إذا كان هناك محتوى مخفي على اليمين
     setCanScrollLeft(scrolledFromEnd);
     setCanScrollRight(scrolledFromStart);
   };
 
   useEffect(() => {
     checkScroll();
-    // تأخير بسيط للتأكد من قياس العرض الصحيح
     const t = setTimeout(checkScroll, 100);
 
     const el = tabsScrollRef.current;
@@ -141,7 +148,7 @@ export function UsersListPage() {
   };
 
   // ================================================
-  // Stats — من allUsers (لا تتأثر بالفلترة)
+  // Stats
   // ================================================
 
   const stats = useMemo(() => {
@@ -203,8 +210,22 @@ export function UsersListPage() {
     filters.isActive !== null;
 
   // ================================================
-  // Render — Loading
+  // Render Guards
   // ================================================
+
+  if (checkingView) {
+    return <Loading message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  if (!canView) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لعرض المستخدمين.</p>
+      </div>
+    );
+  }
 
   if (loading && users.length === 0) {
     return <Loading message="جاري تحميل المستخدمين..." />;
@@ -229,15 +250,19 @@ export function UsersListPage() {
               : 'لا يوجد مستخدمون'}
           </p>
         </div>
-        <Button
-          variant="primary"
-          icon={<Plus className="w-4 h-4" />}
-          onClick={() => navigate('/settings/users/new')}
-          className="flex-shrink-0"
-        >
-          <span className="hidden sm:inline">إضافة مستخدم</span>
-          <span className="sm:hidden">إضافة</span>
-        </Button>
+        
+        {/* ⭐ زر الإضافة يظهر فقط لمن يملك الصلاحية */}
+        {hasCreatePermission && (
+          <Button
+            variant="primary"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={() => navigate('/settings/users/new')}
+            className="flex-shrink-0"
+          >
+            <span className="hidden sm:inline">إضافة مستخدم</span>
+            <span className="sm:hidden">إضافة</span>
+          </Button>
+        )}
       </div>
 
       {/* Error */}
@@ -256,11 +281,9 @@ export function UsersListPage() {
         </Card>
       )}
 
-      {/* ═══════════════════════════════════════════ */}
       {/* Filters Card */}
-      {/* ═══════════════════════════════════════════ */}
       <Card padding="none" className="overflow-hidden">
-        {/* ⭐ Tabs — Mobile: Dropdown */}
+        {/* Tabs — Mobile */}
         <div className="sm:hidden p-3 border-b border-border">
           <label className="block text-xs font-medium text-text-muted mb-1.5">
             تصنيف المستخدمين
@@ -280,23 +303,20 @@ export function UsersListPage() {
           </select>
         </div>
 
-        {/* ⭐ Tabs — Desktop with smart arrows */}
+        {/* Tabs — Desktop */}
         <div className="hidden sm:block border-b border-border relative">
           {canScrollRight && (
             <button
               onClick={scrollRight}
               className="absolute right-0 top-0 bottom-0 z-10 w-12 bg-gradient-to-l from-surface via-surface to-transparent flex items-center justify-center hover:from-primary/10 transition-colors"
-              aria-label="المزيد"
             >
               <ChevronRight className="w-5 h-5 text-primary" />
             </button>
           )}
-
           {canScrollLeft && (
             <button
               onClick={scrollLeft}
               className="absolute left-0 top-0 bottom-0 z-10 w-12 bg-gradient-to-r from-surface via-surface to-transparent flex items-center justify-center hover:from-primary/10 transition-colors"
-              aria-label="السابق"
             >
               <ChevronLeft className="w-5 h-5 text-primary" />
             </button>
@@ -348,7 +368,7 @@ export function UsersListPage() {
           </div>
         </div>
 
-        {/* Search + Advanced */}
+        {/* Search */}
         <div className="p-3 sm:p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="flex-1 min-w-0 relative">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
@@ -371,7 +391,6 @@ export function UsersListPage() {
                 <span className="hidden sm:inline">مسح</span>
               </Button>
             )}
-
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="text-xs text-primary hover:underline whitespace-nowrap px-2"
@@ -403,7 +422,6 @@ export function UsersListPage() {
                 ))}
               </select>
             </div>
-
             <div>
               <label className="block text-xs font-medium text-text-muted mb-1.5">
                 الحالة
@@ -431,10 +449,7 @@ export function UsersListPage() {
         )}
       </Card>
 
-      {/* ═══════════════════════════════════════════ */}
       {/* Users List */}
-      {/* ═══════════════════════════════════════════ */}
-
       {loading ? (
         <Loading message="جاري التحميل..." />
       ) : users.length === 0 ? (
@@ -456,6 +471,14 @@ export function UsersListPage() {
             {hasActiveFilters ? (
               <Button variant="ghost" onClick={handleClearFilters}>
                 مسح الفلاتر
+              </Button>
+            ) : hasCreatePermission ? (
+              <Button
+                variant="primary"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => navigate('/settings/users/new')}
+              >
+                إضافة مستخدم
               </Button>
             ) : null}
           </div>
@@ -508,7 +531,6 @@ export function UsersListPage() {
                           </div>
                         </button>
                       </td>
-
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
                           {user.roles.length === 0 ? (
@@ -527,7 +549,6 @@ export function UsersListPage() {
                           )}
                         </div>
                       </td>
-
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs ${
@@ -544,7 +565,6 @@ export function UsersListPage() {
                           {user.is_active ? 'نشط' : 'معطّل'}
                         </span>
                       </td>
-
                       <td className="px-4 py-3">
                         <span className="text-xs text-text-secondary">
                           {user.last_login_at
@@ -554,20 +574,22 @@ export function UsersListPage() {
                             : 'لم يدخل بعد'}
                         </span>
                       </td>
-
                       <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() =>
-                            handleToggleActive(user.id, user.is_active)
-                          }
-                          className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
-                            user.is_active
-                              ? 'text-danger hover:bg-danger/10'
-                              : 'text-success hover:bg-success/10'
-                          }`}
-                        >
-                          {user.is_active ? 'تعطيل' : 'تفعيل'}
-                        </button>
+                        {/* ⭐ إجراء التعطيل/التفعيل يظهر فقط لمن يملك users.manage أو users.deactivate */}
+                        {canManage && (
+                          <button
+                            onClick={() =>
+                              handleToggleActive(user.id, user.is_active)
+                            }
+                            className={`text-xs px-3 py-1.5 rounded-md transition-colors ${
+                              user.is_active
+                                ? 'text-danger hover:bg-danger/10'
+                                : 'text-success hover:bg-success/10'
+                            }`}
+                          >
+                            {user.is_active ? 'تعطيل' : 'تفعيل'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -669,3 +691,5 @@ function StatusButton({
     </button>
   );
 }
+
+export default UsersListPage;

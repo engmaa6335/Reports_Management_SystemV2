@@ -8,9 +8,11 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Lock,
 } from 'lucide-react';
 import { useTemplatesAdminStore } from '../../../stores/templates-admin-store';
 import { useEntityStore } from '../../../stores/entity-store';
+import { usePermission } from '../../../hooks/usePermission';
 import { Button, Card } from '../../../components/ui';
 import { Loading } from '../../../components/ui/Loading';
 import { TemplateCard } from '../../../components/templates-admin/TemplateCard';
@@ -27,6 +29,10 @@ import type {
 export function TemplatesPage() {
   const navigate = useNavigate();
   const { activeEntity } = useEntityStore();
+
+  // ⭐ فحص الصلاحيات
+  const { allowed: canManage } = usePermission('templates.manage');
+  const { allowed: canView, loading: checkingView } = usePermission('templates.view');
 
   const {
     templates,
@@ -65,9 +71,11 @@ export function TemplatesPage() {
   // ================================================
 
   useEffect(() => {
-    loadCategories();
-    loadTemplates();
-  }, [loadCategories, loadTemplates]);
+    if (canView) {
+      loadCategories();
+      loadTemplates();
+    }
+  }, [loadCategories, loadTemplates, canView]);
 
   // Debounced search
   useEffect(() => {
@@ -221,8 +229,22 @@ export function TemplatesPage() {
     filters.search || filters.categoryCode || filters.isActive !== null;
 
   // ================================================
-  // Render — Loading
+  // Render Guards
   // ================================================
+
+  if (checkingView) {
+    return <Loading message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  if (!canView) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لعرض القوالب.</p>
+      </div>
+    );
+  }
 
   if (loadingList && templates.length === 0) {
     return <Loading message="جاري تحميل القوالب..." />;
@@ -258,7 +280,7 @@ export function TemplatesPage() {
             <span className="hidden sm:inline">تحديث</span>
           </Button>
 
-          {isTechSupport && (
+          {canManage && (
             <Button
               variant="primary"
               icon={<Plus className="w-4 h-4" />}
@@ -427,7 +449,7 @@ export function TemplatesPage() {
               <Button variant="ghost" onClick={handleClearFilters}>
                 مسح الفلاتر
               </Button>
-            ) : isTechSupport ? (
+            ) : canManage ? (
               <Button
                 variant="primary"
                 icon={<Plus className="w-4 h-4" />}
@@ -452,7 +474,7 @@ export function TemplatesPage() {
                   template={template}
                   onClick={() => handleViewDetails(template.id)}
                 />
-                {isTechSupport && (
+                {canManage && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -565,3 +587,5 @@ function StatusButton({
     </button>
   );
 }
+
+export default TemplatesPage;

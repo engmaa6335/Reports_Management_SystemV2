@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, ArrowLeft, Save, X, FileText, Loader2 } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Save, X, FileText, Loader2, Lock } from 'lucide-react';
 import { useTemplatesStore } from '../../stores/templates-store';
 import { useReportsStore } from '../../stores/reports-store';
 import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore } from '../../stores/entity-store';
+import { usePermission } from '../../hooks/usePermission';
 import { Button, Card } from '../../components/ui';
 import { Loading } from '../../components/ui/Loading';
 import { DynamicField } from '../../components/reports/DynamicField';
@@ -97,6 +98,10 @@ export function CreateReportPage() {
   const { templateId: urlTemplateId } = useParams<{ templateId?: string }>();
   const { user } = useAuthStore();
   const { activeEntity } = useEntityStore();
+  
+  // ⭐ فحص الصلاحيات
+  const { allowed: canCreate, loading: checkingCreate } = usePermission('reports.create');
+  
   const {
     templates,
     selectedTemplate,
@@ -134,7 +139,6 @@ export function CreateReportPage() {
     }
   }, [activeEntity?.roleCode, activeEntity?.entityId, loadAvailableTemplates]);
 
-  // عند تغيير الكيان
   useEffect(() => {
     const currentEntityId = activeEntity?.entityId || '';
 
@@ -355,10 +359,6 @@ export function CreateReportPage() {
     selectedTemplate?.id,
   ]);
 
-  // ================================================
-  // Derived Data
-  // ================================================
-
   const orderedFields = useMemo(() => {
     return [...fields].sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
   }, [fields]);
@@ -394,11 +394,8 @@ export function CreateReportPage() {
     });
   }, [templates, activeEntity?.regionModes]);
 
-  // ================================================
-  // Handlers
-  // ================================================
-
   const handleTemplateSelect = (templateId: string) => {
+    if (!canCreate) return;
     selectTemplate(templateId);
     navigate(`/reports/new/${templateId}`, { replace: true });
   };
@@ -432,7 +429,7 @@ export function CreateReportPage() {
   };
 
   const handleSubmit = async () => {
-    if (!selectedTemplate || !activeEntity || !user) return;
+    if (!selectedTemplate || !activeEntity || !user || !canCreate) return;
 
     if (!validate()) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -445,12 +442,10 @@ export function CreateReportPage() {
     }
 
     try {
-      // ⭐ 1. استخراج الكيان المستهدف (المدرسة أو المركز) من النموذج
       const centerSelectField = fields.find(
         (f) => f.field_type === 'center_select' || f.field_type === 'school_select'
       );
       
-      // إذا وجدنا الحقل، نأخذ القيمة، وإلا نستخدم كيان المنطقة كاحتياط
       const selectedSchoolOrCenterId = centerSelectField 
         ? (formData[centerSelectField.field_key] as string) 
         : activeEntity.entityId;
@@ -458,9 +453,7 @@ export function CreateReportPage() {
       const reportId = await createReport({
         templateId: selectedTemplate.id,
         templateVersionId: selectedTemplate.current_version_id,
-        // ⭐ الحفظ هنا: الكيان المستهدف (مدرسة/مركز) كـ entityId
         entityId: selectedSchoolOrCenterId || activeEntity.entityId, 
-        // ⭐ المنطقة (المختص) كـ regionId
         regionId: activeEntity.entityId, 
         data: formData,
         periodType: null,
@@ -491,6 +484,27 @@ export function CreateReportPage() {
   // ================================================
   // Render Guards
   // ================================================
+
+  if (checkingCreate) {
+    return <Loading message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  if (!canCreate) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لإنشاء تقرير جديد.</p>
+        <Button
+          variant="ghost"
+          className="mt-4"
+          onClick={() => navigate('/reports')}
+        >
+          العودة للتقارير
+        </Button>
+      </div>
+    );
+  }
 
   if (templatesLoading || checkingEntities) {
     return <Loading message={t('report_form.loading')} />;
@@ -602,10 +616,6 @@ export function CreateReportPage() {
     );
   }
 
-  // ================================================
-  // Render — Step 2: Fill Form
-  // ================================================
-
   const renderField = (field: any) => {
     const fullWidth = isFullWidthField(field);
     const isManagerField =
@@ -635,7 +645,6 @@ export function CreateReportPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <button
@@ -662,7 +671,7 @@ export function CreateReportPage() {
             variant="primary"
             icon={<Save className="w-4 h-4" />}
             onClick={handleSubmit}
-            disabled={reportsLoading}
+            disabled={reportsLoading || !canCreate}
             loading={reportsLoading}
           >
             {t('report_form.create_report')}
@@ -670,7 +679,6 @@ export function CreateReportPage() {
         </div>
       </div>
 
-      {/* Region Badge */}
       {activeEntity && (
         <Card padding="md" className="bg-primary/5 border-primary/20">
           <div className="flex items-center gap-2 text-sm flex-wrap">
@@ -695,7 +703,6 @@ export function CreateReportPage() {
         </Card>
       )}
 
-      {/* Error Banner */}
       {reportsError && (
         <Card padding="md" className="border-danger bg-danger/5">
           <div className="text-danger text-sm flex items-start gap-2">
@@ -705,7 +712,6 @@ export function CreateReportPage() {
         </Card>
       )}
 
-      {/* Sections */}
       <div className="space-y-6">
         {sections.map((section) => (
           <FormSection
@@ -722,7 +728,6 @@ export function CreateReportPage() {
         ))}
       </div>
 
-      {/* Bottom Actions */}
       <div className="flex items-center justify-end gap-3 pt-2">
         <Button variant="ghost" onClick={handleCancel}>
           {t('report_form.cancel')}
@@ -732,7 +737,7 @@ export function CreateReportPage() {
           size="lg"
           icon={<Save className="w-5 h-5" />}
           onClick={handleSubmit}
-          disabled={reportsLoading}
+          disabled={reportsLoading || !canCreate}
           loading={reportsLoading}
         >
           {t('report_form.create_report')}

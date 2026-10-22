@@ -14,8 +14,10 @@ import {
   Activity,
   Key,
   Hash,
+  Lock,
 } from 'lucide-react';
 import { useUsersStore } from '../../stores/users-store';
+import { usePermission } from '../../hooks/usePermission';
 import { listEntitiesByType } from '../../lib/users-api';
 import { getAllowedEntityTypes } from '../../lib/role-entity-types';
 import { Button, Card } from '../../components/ui';
@@ -44,6 +46,15 @@ interface ConfirmState {
 export function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  // ⭐ فحص الصلاحيات
+  const { allowed: canView, loading: checkingView } = usePermission('users.view');
+  const { allowed: canEdit } = usePermission('users.edit');
+  const { allowed: canManage } = usePermission('users.manage');
+  const { allowed: canDeactivate } = usePermission('users.deactivate');
+
+  const hasEditPermission = canManage || canEdit;
+  const hasDeactivatePermission = canManage || canDeactivate;
 
   const {
     selectedUser: user,
@@ -101,7 +112,7 @@ export function UserDetailPage() {
   // ================================================
 
   useEffect(() => {
-    if (id) {
+    if (id && canView) {
       loadUserById(id);
       loadRoles();
       loadActivity(id);
@@ -109,7 +120,7 @@ export function UserDetailPage() {
     return () => {
       clearSelectedUser();
     };
-  }, [id, loadUserById, loadRoles, loadActivity, clearSelectedUser]);
+  }, [id, loadUserById, loadRoles, loadActivity, clearSelectedUser, canView]);
 
   // Load entities when role changes
   useEffect(() => {
@@ -191,7 +202,7 @@ export function UserDetailPage() {
   // ================================================
 
   const handleToggleActive = () => {
-    if (!user) return;
+    if (!user || !hasDeactivatePermission) return;
     const isActive = user.is_active;
 
     showConfirm({
@@ -208,7 +219,7 @@ export function UserDetailPage() {
   };
 
   const handleOpenEdit = () => {
-    if (!user) return;
+    if (!user || !hasEditPermission) return;
     setEditForm({
       full_name: user.full_name,
       phone: user.phone || '',
@@ -219,7 +230,7 @@ export function UserDetailPage() {
   };
 
   const handleSaveEdit = async () => {
-    if (!user) return;
+    if (!user || !hasEditPermission) return;
 
     const errors: Record<string, string> = {};
     if (!editForm.full_name.trim()) {
@@ -231,11 +242,11 @@ export function UserDetailPage() {
     }
 
     try {
-            await updateProfile(user.id, {
+      await updateProfile(user.id, {
         full_name: editForm.full_name.trim(),
         phone: editForm.phone.trim() || null,
         employee_number: editForm.employee_number.trim() || null,
-      } as any); // ⭐ إضافة as any هنا لحل مشكلة TypeScript
+      } as any);
       setShowEditModal(false);
       loadActivity(user.id);
     } catch {
@@ -250,7 +261,7 @@ export function UserDetailPage() {
   };
 
   const handleEndRole = (assignmentId: string, roleName: string) => {
-    if (!user) return;
+    if (!user || !hasEditPermission) return;
 
     showConfirm({
       title: 'إنهاء الدور',
@@ -275,7 +286,7 @@ export function UserDetailPage() {
   };
 
   const handleAddRole = async () => {
-    if (!user || !newRoleId || !newEntityId) {
+    if (!user || !newRoleId || !newEntityId || !hasEditPermission) {
       return;
     }
 
@@ -307,8 +318,22 @@ export function UserDetailPage() {
   };
 
   // ================================================
-  // Render
+  // Render Guards
   // ================================================
+
+  if (checkingView) {
+    return <Loading message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  if (!canView) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لعرض بيانات هذا المستخدم.</p>
+      </div>
+    );
+  }
 
   if (loadingUser) {
     return <Loading message="جاري تحميل المستخدم..." />;
@@ -336,6 +361,10 @@ export function UserDetailPage() {
         .map(getEntityTypeName)
         .join('، ')
     : '';
+
+  // ================================================
+  // Render — Main
+  // ================================================
 
   return (
     <div className="space-y-6">
@@ -368,13 +397,16 @@ export function UserDetailPage() {
             الصلاحيات
           </Button>
 
-          <Button
-            variant={user.is_active ? 'ghost' : 'primary'}
-            onClick={handleToggleActive}
-            disabled={saving}
-          >
-            {user.is_active ? 'تعطيل' : 'تفعيل'}
-          </Button>
+          {/* ⭐ زر التفعيل/التعطيل يظهر فقط لمن يملك الصلاحية */}
+          {hasDeactivatePermission && (
+            <Button
+              variant={user.is_active ? 'ghost' : 'primary'}
+              onClick={handleToggleActive}
+              disabled={saving}
+            >
+              {user.is_active ? 'تعطيل' : 'تفعيل'}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -432,14 +464,17 @@ export function UserDetailPage() {
             <h3 className="text-lg font-semibold text-text">
               📋 المعلومات الأساسية
             </h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<Edit2 className="w-4 h-4" />}
-              onClick={handleOpenEdit}
-            >
-              تعديل
-            </Button>
+            {/* ⭐ زر التعديل يظهر فقط لمن يملك الصلاحية */}
+            {hasEditPermission && (
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<Edit2 className="w-4 h-4" />}
+                onClick={handleOpenEdit}
+              >
+                تعديل
+              </Button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -448,37 +483,31 @@ export function UserDetailPage() {
               label="البريد"
               value={user.email}
             />
-
             <InfoRow
               icon={<UserIcon className="w-5 h-5" />}
               label="اسم المستخدم"
               value={user.username}
             />
-
             <InfoRow
               icon={<Hash className="w-5 h-5" />}
               label="الرقم الوظيفي"
               value={user.employee_number || '—'}
             />
-
             <InfoRow
               icon={<UserIcon className="w-5 h-5" />}
               label="الاسم الكامل"
               value={user.full_name}
             />
-
             <InfoRow
               icon={<Phone className="w-5 h-5" />}
               label="الهاتف"
               value={user.phone || '—'}
             />
-
             <InfoRow
               icon={<Calendar className="w-5 h-5" />}
               label="تاريخ الإنشاء"
               value={new Date(user.created_at).toLocaleDateString('ar-EG')}
             />
-
             <InfoRow
               icon={<Calendar className="w-5 h-5" />}
               label="آخر دخول"
@@ -488,7 +517,6 @@ export function UserDetailPage() {
                   : 'لم يدخل بعد'
               }
             />
-
             <InfoRow
               icon={<Shield className="w-5 h-5" />}
               label="الحالة"
@@ -506,14 +534,17 @@ export function UserDetailPage() {
             <h3 className="text-lg font-semibold text-text">
               🎭 الأدوار والكيانات
             </h3>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={() => setShowAddRole(true)}
-            >
-              إضافة دور
-            </Button>
+            {/* ⭐ زر إضافة دور يظهر فقط لمن يملك الصلاحية */}
+            {hasEditPermission && (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => setShowAddRole(true)}
+              >
+                إضافة دور
+              </Button>
+            )}
           </div>
 
           {user.roles.length === 0 ? (
@@ -552,15 +583,18 @@ export function UserDetailPage() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() =>
-                        handleEndRole(r.assignment_id, r.role_name)
-                      }
-                      disabled={saving}
-                      className="text-xs text-danger hover:bg-danger/10 px-3 py-1.5 rounded-md transition-colors"
-                    >
-                      إنهاء
-                    </button>
+                    {/* ⭐ زر الإنهاء يظهر فقط لمن يملك الصلاحية */}
+                    {hasEditPermission && (
+                      <button
+                        onClick={() =>
+                          handleEndRole(r.assignment_id, r.role_name)
+                        }
+                        disabled={saving}
+                        className="text-xs text-danger hover:bg-danger/10 px-3 py-1.5 rounded-md transition-colors"
+                      >
+                        إنهاء
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -882,20 +916,13 @@ function InfoRow({
 
 function getEntityIcon(entityTypeCode: string | null): string {
   switch (entityTypeCode) {
-    case 'region':
-      return '🗺️';
-    case 'school':
-      return '🏫';
-    case 'tls_center':
-      return '🏢';
-    case 'edu_unit':
-      return '📚';
-    case 'edc':
-      return '🏛️';
-    case 'qa_unit':
-      return '✅';
-    default:
-      return '📍';
+    case 'region': return '🗺️';
+    case 'school': return '🏫';
+    case 'tls_center': return '🏢';
+    case 'edu_unit': return '📚';
+    case 'edc': return '🏛️';
+    case 'qa_unit': return '✅';
+    default: return '📍';
   }
 }
 
@@ -913,28 +940,17 @@ function getEntityTypeName(typeCode: string): string {
 
 function getActionIcon(action: string): string {
   switch (action) {
-    case 'user_created':
-      return '🆕';
-    case 'user_updated':
-      return '✏️';
-    case 'user_activated':
-      return '✅';
-    case 'user_deactivated':
-      return '⛔';
-    case 'user_hard_deleted':
-      return '🗑️';
-    case 'role_assigned':
-      return '🎭';
-    case 'role_ended':
-      return '🚫';
-    case 'create':
-      return '➕';
-    case 'update':
-      return '✏️';
-    case 'delete':
-      return '🗑️';
-    default:
-      return '📌';
+    case 'user_created': return '🆕';
+    case 'user_updated': return '✏️';
+    case 'user_activated': return '✅';
+    case 'user_deactivated': return '⛔';
+    case 'user_hard_deleted': return '🗑️';
+    case 'role_assigned': return '🎭';
+    case 'role_ended': return '🚫';
+    case 'create': return '➕';
+    case 'update': return '✏️';
+    case 'delete': return '🗑️';
+    default: return '📌';
   }
 }
 
@@ -983,3 +999,5 @@ function formatValue(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'نشط' : 'معطّل';
   return String(value);
 }
+
+export default UserDetailPage;

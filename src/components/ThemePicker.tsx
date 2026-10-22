@@ -1,6 +1,7 @@
-import { Check, RotateCcw, Loader2 } from 'lucide-react';
+import { Check, RotateCcw, Loader2, Lock } from 'lucide-react';
 import { useThemeStore } from '../stores/theme-store';
 import { useAuthStore } from '../stores/auth-store';
+import { usePermission } from '../hooks/usePermission'; // ⭐ إضافة الاستيراد
 
 interface ThemePickerProps {
   title?: string;
@@ -17,7 +18,31 @@ export function ThemePicker({
     useThemeStore();
   const userId = useAuthStore((s) => s.user?.id);
 
+  // ⭐ فحص صلاحية عرض الثيمات
+  const { allowed: canView, loading: checkingPerm } = usePermission('themes.view');
+
   if (!userId) return null;
+
+  // ⭐ حالة التحميل
+  if (checkingPerm) {
+    return (
+      <div className="flex items-center justify-center h-32">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // ⭐ إخفاء المكون بالكامل إذا لم يملك الصلاحية
+  if (!canView) {
+    return (
+      <div className="p-6 text-center border border-border rounded-xl bg-bg-secondary">
+        <Lock className="w-8 h-8 mx-auto mb-2 text-text-muted opacity-50" />
+        <p className="text-sm text-text-secondary">
+          ليس لديك صلاحية لتغيير الثيم. يرجى التواصل مع الدعم الفني.
+        </p>
+      </div>
+    );
+  }
 
   const isDefault = currentCode === 'light';
 

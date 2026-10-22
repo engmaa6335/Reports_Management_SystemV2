@@ -1,5 +1,6 @@
-import { NavLink, Outlet } from 'react-router-dom';
-import { Bell, FileText, ScrollText, Settings, Send } from 'lucide-react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Bell, FileText, ScrollText, Settings, Send, Lock, Loader2 } from 'lucide-react';
+import { usePermission } from '../../../hooks/usePermission';
 
 const TABS = [
   { to: 'rules', label: 'قواعد التنبيهات', icon: Bell },
@@ -9,6 +10,28 @@ const TABS = [
 ];
 
 export function NotificationsAdminPage() {
+  // ⭐ فحص صلاحية إدارة التنبيهات
+  const { allowed: canManage, loading: checkingManage } = usePermission('notifications.manage');
+
+  if (checkingManage) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  // ⭐ منع الوصول
+  if (!canManage) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لإدارة التنبيهات.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6" dir="rtl">
       {/* رأس الصفحة */}
@@ -62,3 +85,5 @@ export function NotificationsAdminPage() {
     </div>
   );
 }
+
+export default NotificationsAdminPage;

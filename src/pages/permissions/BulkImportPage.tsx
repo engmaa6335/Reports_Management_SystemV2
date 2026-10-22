@@ -8,8 +8,11 @@ import {
   RotateCcw,
   Download,
   Loader2,
+  Lock,
 } from 'lucide-react';
+import { usePermission } from '../../hooks/usePermission';
 import { Button, Card } from '../../components/ui';
+import { Loading } from '../../components/ui/Loading';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import {
   ConfirmationModal,
@@ -18,7 +21,6 @@ import {
 import {
   bulkReassignFromExcel,
   rollbackBulkImport,
-  resolveEntityName,
   type BulkImportResult,
   type EntitySuggestion,
 } from '../../lib/permissions-api';
@@ -30,6 +32,9 @@ import {
 import { supabase } from '../../lib/supabase';
 
 export function BulkImportPage() {
+  // ⭐ فحص الصلاحية
+  const { allowed: canImport, loading: checkingImport } = usePermission('bulk_import.execute');
+
   const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<ParsedExcelRow[]>([]);
   const [previewResult, setPreviewResult] = useState<BulkImportResult | null>(null);
@@ -80,6 +85,7 @@ export function BulkImportPage() {
   };
 
   const handleDownloadTemplate = async () => {
+    if (!canImport) return;
     setLoadingTemplate(true);
     try {
       await downloadExcelTemplate();
@@ -91,6 +97,7 @@ export function BulkImportPage() {
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canImport) return;
     const f = e.target.files?.[0];
     if (!f) return;
 
@@ -181,7 +188,7 @@ export function BulkImportPage() {
   };
 
   const handlePreview = async () => {
-    if (!rows.length) return;
+    if (!rows.length || !canImport) return;
     setLoading(true);
     setError(null);
     setPreviewResult(null);
@@ -220,6 +227,7 @@ export function BulkImportPage() {
   };
 
   const handleConfirmationConfirm = async (confirmedItems: ConfirmationItem[]) => {
+    if (!canImport) return;
     setShowConfirmation(false);
     setLoading(true);
 
@@ -277,7 +285,7 @@ export function BulkImportPage() {
   };
 
   const handleExecute = () => {
-    if (!rows.length) return;
+    if (!rows.length || !canImport) return;
     showConfirm({
       title: 'تنفيذ الاستيراد',
       message:
@@ -308,7 +316,7 @@ export function BulkImportPage() {
   };
 
   const handleRollback = () => {
-    if (!executeResult?.job_id) return;
+    if (!executeResult?.job_id || !canImport) return;
     showConfirm({
       title: 'تراجع عن الاستيراد',
       message: 'هل تريد التراجع عن هذا الاستيراد؟ سيتم حذف الإسنادات المُنشأة.',
@@ -339,6 +347,22 @@ export function BulkImportPage() {
       },
     });
   };
+
+  // ⭐ شاشة التحقق من الصلاحيات
+  if (checkingImport) {
+    return <Loading message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  // ⭐ منع الوصول
+  if (!canImport) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لتنفيذ الاستيراد الجماعي.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -585,3 +609,5 @@ function StatCard({
     </div>
   );
 }
+
+export default BulkImportPage;

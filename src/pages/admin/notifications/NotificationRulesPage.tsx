@@ -12,7 +12,9 @@ import {
   AlertCircle,
   Loader2,
   RefreshCw,
+  Lock,
 } from 'lucide-react';
+import { usePermission } from '../../../hooks/usePermission';
 import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmModal } from '../../../components/ui/ConfirmModal';
@@ -80,6 +82,9 @@ export function NotificationRulesPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
+  // ⭐ فحص الصلاحية
+  const { allowed: canManage, loading: checkingManage } = usePermission('notifications.manage');
+
   const [rules, setRules] = useState<RuleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,10 +101,13 @@ export function NotificationRulesPage() {
 
   // ── جلب القواعد ──
   useEffect(() => {
-    loadRules();
-  }, []);
+    if (canManage) {
+      loadRules();
+    }
+  }, [canManage]);
 
   async function loadRules() {
+    if (!canManage) return;
     setLoading(true);
     setError(null);
     try {
@@ -159,6 +167,7 @@ export function NotificationRulesPage() {
 
   // ── تفعيل/تعطيل ──
   async function toggleActive(rule: RuleRow) {
+    if (!canManage) return;
     setActionInProgress(rule.id);
     try {
       const { error: updateError } = await supabase
@@ -182,6 +191,7 @@ export function NotificationRulesPage() {
 
   // ── نسخ القاعدة ──
   async function duplicateRule(rule: RuleRow) {
+    if (!canManage) return;
     setActionInProgress(rule.id);
     try {
       const { data: full, error: readErr } = await supabase
@@ -220,7 +230,7 @@ export function NotificationRulesPage() {
 
   // ── حذف ──
   async function confirmDelete() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !canManage) return;
     setDeleting(true);
     try {
       const { error: deleteErr } = await supabase
@@ -240,7 +250,29 @@ export function NotificationRulesPage() {
   }
 
   // ════════════════════════════════════════════════════════════
-  // Render
+  // Render Guards
+  // ════════════════════════════════════════════════════════════
+
+  if (checkingManage) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!canManage) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لإدارة قواعد التنبيهات.</p>
+      </div>
+    );
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // Main Render
   // ════════════════════════════════════════════════════════════
 
   return (
@@ -607,3 +639,5 @@ function PriorityBadge({ priority }: { priority: string | null }) {
     </span>
   );
 }
+
+export default NotificationRulesPage;

@@ -10,6 +10,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useEntitiesStore } from '../../../stores/entities-store';
+import { usePermission } from '../../../hooks/usePermission';
 import { Button, Card } from '../../../components/ui';
 import { Loading } from '../../../components/ui/Loading';
 import * as api from '../../../lib/entities-api';
@@ -25,20 +26,13 @@ import type {
 
 function getEntityIcon(typeCode: string | null | undefined): string {
   switch (typeCode) {
-    case 'region':
-      return '🗺️';
-    case 'school':
-      return '🏫';
-    case 'tls_center':
-      return '🏢';
-    case 'edu_unit':
-      return '📚';
-    case 'edc':
-      return '🏛️';
-    case 'qa_unit':
-      return '✅';
-    default:
-      return '📍';
+    case 'region': return '🗺️';
+    case 'school': return '🏫';
+    case 'tls_center': return '🏢';
+    case 'edu_unit': return '📚';
+    case 'edc': return '🏛️';
+    case 'qa_unit': return '✅';
+    default: return '📍';
   }
 }
 
@@ -80,6 +74,13 @@ export function EntityFormPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isEdit = !!id;
+
+  // ⭐ فحص الصلاحيات
+  const { allowed: canCreate } = usePermission('entities.create');
+  const { allowed: canEdit } = usePermission('entities.edit');
+  const { allowed: canManage } = usePermission('entities.manage');
+
+  const canSubmit = isEdit ? (canManage || canEdit) : (canManage || canCreate);
 
   const {
     entityTypes,
@@ -176,10 +177,7 @@ export function EntityFormPage() {
     const timer = setTimeout(async () => {
       setCheckingCode(true);
       try {
-        const taken = await api.isCodeTaken(
-          form.code,
-          isEdit ? id : undefined
-        );
+        const taken = await api.isCodeTaken(form.code, isEdit ? id : undefined);
         setCodeTaken(taken);
       } catch {
         setCodeTaken(false);
@@ -225,6 +223,11 @@ export function EntityFormPage() {
   };
 
   const handleSubmit = async () => {
+    if (!canSubmit) {
+      alert('ليس لديك صلاحية لتنفيذ هذا الإجراء.');
+      return;
+    }
+
     if (!validate()) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -253,7 +256,6 @@ export function EntityFormPage() {
         await updateEntity(id, payload);
         navigate(`/settings/entities/${id}`, { replace: true });
       } else {
-        // ⭐ للإنشاء — استدعاء API مباشر لضمان الحصول على ID
         const payload: CreateEntityPayload = {
           entity_type_id: form.entity_type_id,
           parent_id: form.parent_id || null,
@@ -269,7 +271,6 @@ export function EntityFormPage() {
 
         const result = await api.createEntity(payload);
 
-        // ⭐ تحقق صريح من ID
         if (!result || !result.id) {
           console.error('❌ Invalid result from createEntity:', result);
           alert('تم الإنشاء لكن حدث خطأ في المعرّف. العودة للقائمة.');
@@ -336,8 +337,26 @@ export function EntityFormPage() {
     }`;
 
   // ================================================
-  // Render — Loading
+  // Render — Guards
   // ================================================
+
+  // ⭐ حماية إضافية إذا دخل المستخدم الرابط يدوياً
+  if (!canSubmit) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية {isEdit ? 'لتعديل' : 'لإنشاء'} كيان.</p>
+        <Button
+          variant="ghost"
+          className="mt-4"
+          onClick={() => navigate('/settings/entities')}
+        >
+          العودة للكيانات
+        </Button>
+      </div>
+    );
+  }
 
   if (isEdit && loadingDetail) {
     return <Loading message="جاري تحميل الكيان..." />;
@@ -386,7 +405,7 @@ export function EntityFormPage() {
           variant="primary"
           icon={<Save className="w-4 h-4" />}
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={saving || !canSubmit}
           loading={saving}
         >
           {isEdit ? 'حفظ التعديلات' : 'إنشاء الكيان'}
@@ -416,7 +435,6 @@ export function EntityFormPage() {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Name AR */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               الاسم (عربي) <span className="text-danger">*</span>
@@ -433,7 +451,6 @@ export function EntityFormPage() {
             )}
           </div>
 
-          {/* Name EN */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               الاسم (إنجليزي)
@@ -448,7 +465,6 @@ export function EntityFormPage() {
             />
           </div>
 
-          {/* Code */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               الكود
@@ -492,7 +508,6 @@ export function EntityFormPage() {
             )}
           </div>
 
-          {/* Type */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               النوع <span className="text-danger">*</span>
@@ -522,7 +537,6 @@ export function EntityFormPage() {
             )}
           </div>
 
-          {/* Parent */}
           {requiresParent && (
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-text mb-2">
@@ -561,7 +575,6 @@ export function EntityFormPage() {
             </div>
           )}
 
-          {/* Address */}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-text mb-2">
               العنوان
@@ -575,7 +588,6 @@ export function EntityFormPage() {
             />
           </div>
 
-          {/* Active */}
           <div className="md:col-span-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -599,7 +611,6 @@ export function EntityFormPage() {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Manager Name */}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-text mb-2">
               اسم مدير الكيان
@@ -616,7 +627,6 @@ export function EntityFormPage() {
             </p>
           </div>
 
-          {/* Phone */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               الهاتف
@@ -631,7 +641,6 @@ export function EntityFormPage() {
             />
           </div>
 
-          {/* Email */}
           <div>
             <label className="block text-sm font-medium text-text mb-2">
               البريد الإلكتروني
@@ -670,7 +679,7 @@ export function EntityFormPage() {
           size="lg"
           icon={<Save className="w-5 h-5" />}
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={saving || !canSubmit}
           loading={saving}
         >
           {isEdit ? 'حفظ التعديلات' : 'إنشاء الكيان'}
@@ -679,3 +688,6 @@ export function EntityFormPage() {
     </div>
   );
 }
+
+// ⭐ هذا السطر يضمن أن الملف يمكن استيراده بأي طريقة
+export default EntityFormPage;

@@ -9,8 +9,10 @@ import {
   AlertTriangle,
   ChevronLeft,
   Loader2,
+  Lock,
 } from 'lucide-react';
 import { Card, Button } from '../../components/ui';
+import { usePermission } from '../../hooks/usePermission';
 import {
   getBulkImportJobs,
   getAllPermissions,
@@ -19,6 +21,12 @@ import {
 
 export function PermissionsDashboard() {
   const navigate = useNavigate();
+  
+  // ⭐ فحص الصلاحيات
+  const { allowed: canManagePermissions, loading: checkingPerms } = usePermission('permissions.manage');
+  const { allowed: canImport, loading: checkingImport } = usePermission('bulk_import.execute');
+  const { allowed: canViewUsers, loading: checkingUsers } = usePermission('users.view');
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +40,10 @@ export function PermissionsDashboard() {
 
   useEffect(() => {
     async function load() {
+      if (!canManagePermissions) {
+        setLoading(false);
+        return;
+      }
       try {
         setLoading(true);
         const [permissions, roles, jobs] = await Promise.all([
@@ -54,7 +66,27 @@ export function PermissionsDashboard() {
       }
     }
     load();
-  }, []);
+  }, [canManagePermissions]);
+
+  // ⭐ شاشة التحقق من الصلاحيات
+  if (checkingPerms) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  // ⭐ منع الوصول
+  if (!canManagePermissions) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لإدارة الأدوار والصلاحيات.</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -120,18 +152,25 @@ export function PermissionsDashboard() {
       <Card padding="lg">
         <h2 className="text-lg font-semibold mb-4">⚡ إجراءات سريعة</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <ActionCard
-            icon={<Upload className="w-6 h-6" />}
-            title="استيراد جماعي من Excel"
-            description="إعادة تعيين إسنادات المختصين والمنسقين دفعة واحدة"
-            onClick={() => navigate('/settings/permissions/bulk-import')}
-          />
-          <ActionCard
-            icon={<Users className="w-6 h-6" />}
-            title="صلاحيات مستخدم"
-            description="عرض وإدارة الأدوار والاستثناءات لمستخدم محدد"
-            onClick={() => navigate('/settings/users')}
-          />
+          {/* ⭐ زر الاستيراد يظهر فقط لمن يملك الصلاحية */}
+          {!checkingImport && canImport && (
+            <ActionCard
+              icon={<Upload className="w-6 h-6" />}
+              title="استيراد جماعي من Excel"
+              description="إعادة تعيين إسنادات المختصين والمنسقين دفعة واحدة"
+              onClick={() => navigate('/settings/permissions/bulk-import')}
+            />
+          )}
+
+          {/* ⭐ زر المستخدمين يظهر فقط لمن يملك الصلاحية */}
+          {!checkingUsers && canViewUsers && (
+            <ActionCard
+              icon={<Users className="w-6 h-6" />}
+              title="صلاحيات مستخدم"
+              description="عرض وإدارة الأدوار والاستثناءات لمستخدم محدد"
+              onClick={() => navigate('/settings/users')}
+            />
+          )}
         </div>
       </Card>
 
@@ -250,3 +289,5 @@ function ActionCard({
     </button>
   );
 }
+
+export default PermissionsDashboard;

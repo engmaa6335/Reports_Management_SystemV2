@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { useEntitiesStore } from '../../../stores/entities-store';
 import { useEntityStore } from '../../../stores/entity-store';
-import { Button, Card, Input } from '../../../components/ui';
+import { usePermission } from '../../../hooks/usePermission';
+import { Button, Card } from '../../../components/ui';
 import { Loading } from '../../../components/ui/Loading';
 import type { EntityWithRelations } from '../../../types/entities';
 
@@ -24,39 +25,25 @@ import type { EntityWithRelations } from '../../../types/entities';
 
 function getEntityIcon(typeCode: string | null | undefined): string {
   switch (typeCode) {
-    case 'region':
-      return '🗺️';
-    case 'school':
-      return '🏫';
-    case 'tls_center':
-      return '🏢';
-    case 'edu_unit':
-      return '📚';
-    case 'edc':
-      return '🏛️';
-    case 'qa_unit':
-      return '✅';
-    default:
-      return '📍';
+    case 'region': return '🗺️';
+    case 'school': return '🏫';
+    case 'tls_center': return '🏢';
+    case 'edu_unit': return '📚';
+    case 'edc': return '🏛️';
+    case 'qa_unit': return '✅';
+    default: return '📍';
   }
 }
 
 function getTypeColor(typeCode: string | null | undefined): string {
   switch (typeCode) {
-    case 'region':
-      return '#3b82f6';
-    case 'school':
-      return '#10b981';
-    case 'tls_center':
-      return '#f59e0b';
-    case 'edu_unit':
-      return '#8b5cf6';
-    case 'edc':
-      return '#ef4444';
-    case 'qa_unit':
-      return '#06b6d4';
-    default:
-      return '#6b7280';
+    case 'region': return '#3b82f6';
+    case 'school': return '#10b981';
+    case 'tls_center': return '#f59e0b';
+    case 'edu_unit': return '#8b5cf6';
+    case 'edc': return '#ef4444';
+    case 'qa_unit': return '#06b6d4';
+    default: return '#6b7280';
   }
 }
 
@@ -86,6 +73,11 @@ export function EntitiesPage() {
 
   const [searchInput, setSearchInput] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // ⭐ فحص الصلاحيات
+  const { allowed: canManage } = usePermission('entities.manage');
+  const { allowed: canCreate } = usePermission('entities.create');
+  const hasCreatePermission = canManage || canCreate;
 
   // ⭐ للتمرير
   const tabsScrollRef = useRef<HTMLDivElement>(null);
@@ -134,7 +126,6 @@ export function EntitiesPage() {
     const scrolledFromStart = currentScroll > 2;
     const scrolledFromEnd = currentScroll < maxScroll - 2;
 
-    // في RTL نعكس المنطق
     setCanScrollLeft(scrolledFromEnd);
     setCanScrollRight(scrolledFromStart);
   };
@@ -186,12 +177,7 @@ export function EntitiesPage() {
       else inactive++;
     });
 
-    return {
-      total: allEntities.length,
-      active,
-      inactive,
-      byType,
-    };
+    return { total: allEntities.length, active, inactive, byType };
   }, [allEntities]);
 
   // Type tabs
@@ -265,14 +251,13 @@ export function EntitiesPage() {
     filters.regionId ||
     filters.parentId;
 
-  
-      const handleViewDetails = (id: string) => {
-        navigate(`/settings/entities/${id}`);
-      };
+  const handleViewDetails = (id: string) => {
+    navigate(`/settings/entities/${id}`);
+  };
 
-      const handleCreate = () => {
-        navigate('/settings/entities/new');
-      };
+  const handleCreate = () => {
+    navigate('/settings/entities/new');
+  };
 
   // ================================================
   // Render
@@ -304,7 +289,8 @@ export function EntitiesPage() {
             <span className="hidden sm:inline">تحديث</span>
           </Button>
 
-          {isTechSupport && (
+          {/* ⭐ زر الإضافة يظهر فقط لمن يملك الصلاحية */}
+          {hasCreatePermission && (
             <Button
               variant="primary"
               icon={<Plus className="w-4 h-4" />}
@@ -333,11 +319,9 @@ export function EntitiesPage() {
         </Card>
       )}
 
-      {/* ═══════════════════════════════════════════ */}
       {/* Filters Card */}
-      {/* ═══════════════════════════════════════════ */}
       <Card padding="none" className="overflow-hidden">
-        {/* ⭐ Type Tabs — Mobile: Dropdown */}
+        {/* Type Tabs — Mobile: Dropdown */}
         <div className="sm:hidden p-3 border-b border-border">
           <label className="block text-xs font-medium text-text-muted mb-1.5">
             تصنيف الكيانات
@@ -356,7 +340,7 @@ export function EntitiesPage() {
           </select>
         </div>
 
-        {/* ⭐ Type Tabs — Desktop with smart arrows (RTL-aware) */}
+        {/* Type Tabs — Desktop with smart arrows (RTL-aware) */}
         <div className="hidden sm:block border-b border-border relative">
           {canScrollRight && (
             <button
@@ -467,7 +451,6 @@ export function EntitiesPage() {
         {/* Advanced Filters */}
         {showAdvanced && (
           <div className="px-3 sm:px-4 pb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-border pt-4">
-            {/* 1. المنطقة */}
             <div>
               <label className="block text-xs font-medium text-text-muted mb-1.5">
                 المنطقة
@@ -488,7 +471,6 @@ export function EntitiesPage() {
               </select>
             </div>
 
-            {/* 2. نوع الأب */}
             <div>
               <label className="block text-xs font-medium text-text-muted mb-1.5">
                 نوع الأب
@@ -512,7 +494,6 @@ export function EntitiesPage() {
               </select>
             </div>
 
-            {/* 3. الكيان الأب */}
             <div>
               <label className="block text-xs font-medium text-text-muted mb-1.5">
                 الكيان الأب
@@ -537,10 +518,7 @@ export function EntitiesPage() {
         )}
       </Card>
 
-      {/* ═══════════════════════════════════════════ */}
       {/* List */}
-      {/* ═══════════════════════════════════════════ */}
-
       {loadingList ? (
         <Loading message="جاري تحميل الكيانات..." />
       ) : entities.length === 0 ? (
@@ -563,7 +541,7 @@ export function EntitiesPage() {
               <Button variant="ghost" onClick={handleClearFilters}>
                 مسح الفلاتر
               </Button>
-            ) : isTechSupport ? (
+            ) : hasCreatePermission ? (
               <Button
                 variant="primary"
                 icon={<Plus className="w-4 h-4" />}
@@ -790,3 +768,6 @@ function EntityCard({
     </button>
   );
 }
+
+// ⭐ هذا السطر يضمن أن الملف يمكن استيراده بأي طريقة
+export default EntitiesPage;

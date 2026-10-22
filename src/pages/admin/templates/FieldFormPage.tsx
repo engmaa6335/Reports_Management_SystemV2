@@ -6,8 +6,10 @@ import {
   Plus,
   Edit2,
   AlertCircle,
+  Lock,
 } from 'lucide-react';
 import { useTemplatesAdminStore } from '../../../stores/templates-admin-store';
+import { usePermission } from '../../../hooks/usePermission';
 import { Button, Card } from '../../../components/ui';
 import { Loading } from '../../../components/ui/Loading';
 import { FieldOptionsEditor } from '../../../components/templates-admin/FieldOptionsEditor';
@@ -76,6 +78,9 @@ export function FieldFormPage() {
   const navigate = useNavigate();
   const isEdit = !!fieldId;
 
+  // ⭐ فحص الصلاحية
+  const { allowed: canManage, loading: checkingManage } = usePermission('templates.manage');
+
   const {
     selectedTemplate,
     fields,
@@ -95,10 +100,10 @@ export function FieldFormPage() {
   // ═══════════════════════════════════════════
 
   useEffect(() => {
-    if (templateId) {
+    if (templateId && canManage) {
       loadTemplateById(templateId);
     }
-  }, [templateId, loadTemplateById]);
+  }, [templateId, loadTemplateById, canManage]);
 
   // ⭐ تعبئة النموذج عند التعديل
   useEffect(() => {
@@ -158,6 +163,11 @@ export function FieldFormPage() {
   };
 
   const handleSubmit = async () => {
+    if (!canManage) {
+      alert('ليس لديك صلاحية لتنفيذ هذا الإجراء.');
+      return;
+    }
+
     if (!validate()) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -223,12 +233,37 @@ export function FieldFormPage() {
     }`;
 
   // ═══════════════════════════════════════════
-  // Render
+  // Render Guards
   // ═══════════════════════════════════════════
+
+  if (checkingManage) {
+    return <Loading message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  if (!canManage) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لإضافة أو تعديل الحقول.</p>
+        <Button
+          variant="ghost"
+          className="mt-4"
+          onClick={() => navigate(`/settings/templates/${templateId}`)}
+        >
+          العودة للقالب
+        </Button>
+      </div>
+    );
+  }
 
   if (!selectedTemplate) {
     return <Loading message="جاري تحميل القالب..." />;
   }
+
+  // ═══════════════════════════════════════════
+  // Render
+  // ═══════════════════════════════════════════
 
   return (
     <div className="space-y-6">
@@ -265,7 +300,7 @@ export function FieldFormPage() {
           variant="primary"
           icon={<Save className="w-4 h-4" />}
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={saving || !canManage}
           loading={saving}
         >
           {isEdit ? 'حفظ التعديلات' : 'إنشاء الحقل'}
@@ -495,7 +530,7 @@ export function FieldFormPage() {
           size="lg"
           icon={<Save className="w-5 h-5" />}
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={saving || !canManage}
           loading={saving}
         >
           {isEdit ? 'حفظ التعديلات' : 'إنشاء الحقل'}
@@ -504,3 +539,5 @@ export function FieldFormPage() {
     </div>
   );
 }
+
+export default FieldFormPage;

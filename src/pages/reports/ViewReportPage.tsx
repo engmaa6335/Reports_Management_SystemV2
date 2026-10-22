@@ -12,11 +12,13 @@ import {
   Printer,
   Star,
   Trash2,
+  Lock,
 } from 'lucide-react';
 import { useReportsStore } from '../../stores/reports-store';
 import type { ReportField } from '../../stores/reports-store';
 import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore } from '../../stores/entity-store';
+import { usePermission } from '../../hooks/usePermission';
 import { Button, Card } from '../../components/ui';
 import { Loading } from '../../components/ui/Loading';
 import { DeleteReportModal } from '../../components/reports/DeleteReportModal';
@@ -182,6 +184,14 @@ export function ViewReportPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
   const { activeEntity, availableEntities, setActiveEntity } = useEntityStore();
+  
+  // ⭐ فحص الصلاحيات
+  const { allowed: canView, loading: checkingView } = usePermission('reports.view');
+  const { allowed: canViewOwn } = usePermission('reports.view.own');
+  const { allowed: canEdit } = usePermission('reports.edit');
+  const { allowed: canEditOwn } = usePermission('reports.edit.own');
+  const { allowed: canDelete } = usePermission('reports.delete');
+
   const { currentReport, revisions, loading, deleting, error, loadReportById, deleteReport, clearCurrentReport } = useReportsStore();
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -194,9 +204,9 @@ export function ViewReportPage() {
   }, [activeEntity, availableEntities, setActiveEntity]);
 
   useEffect(() => {
-    if (id) loadReportById(id);
+    if (id && (canView || canViewOwn)) loadReportById(id);
     return () => { clearCurrentReport(); };
-  }, [id, loadReportById, clearCurrentReport]);
+  }, [id, loadReportById, clearCurrentReport, canView, canViewOwn]);
 
   useEffect(() => {
     if (!currentReport) return;
@@ -222,17 +232,32 @@ export function ViewReportPage() {
 
   const isOwner = currentReport?.created_by === user?.id;
   const isTechSupport = activeEntity?.roleCode === 'tech_support';
-  const canEdit = isOwner || isTechSupport;
-  const canDelete = isTechSupport;
+
+  const hasEditPermission = (canEdit) || (canEditOwn && isOwner) || isTechSupport;
+  const hasDeletePermission = canDelete || isTechSupport;
 
   const handlePrint = () => window.print();
-  const handleEdit = () => { if (currentReport) navigate(`/reports/${currentReport.id}/edit`); };
+  const handleEdit = () => { if (currentReport && hasEditPermission) navigate(`/reports/${currentReport.id}/edit`); };
   const handleDelete = async (reason: string) => {
-    if (!currentReport) return;
+    if (!currentReport || !hasDeletePermission) return;
     await deleteReport(currentReport.id, reason);
     setShowDeleteModal(false);
     navigate('/reports', { replace: true });
   };
+
+  // ⭐ حماية الصفحة
+  if (checkingView) return <Loading message="جاري التحقق من الصلاحيات..." />;
+
+  if (!canView && !canViewOwn && !isTechSupport) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لعرض هذا التقرير.</p>
+        <Button variant="ghost" className="mt-4" onClick={() => navigate('/reports')}>العودة للتقارير</Button>
+      </div>
+    );
+  }
 
   if (loading) return <Loading message={t('report_form.loading_report')} />;
 
@@ -255,6 +280,18 @@ export function ViewReportPage() {
             </Button>
           </div>
         </Card>
+      </div>
+    );
+  }
+
+  // ⭐ تحقق إضافي: إذا كان canViewOwn فقط، ولم يكن هو المالك، امنعه
+  if (!canView && canViewOwn && !isOwner && !isTechSupport) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>هذا التقرير لا يخصك. ليس لديك صلاحية لعرضه.</p>
+        <Button variant="ghost" className="mt-4" onClick={() => navigate('/reports')}>العودة للتقارير</Button>
       </div>
     );
   }
@@ -285,12 +322,18 @@ export function ViewReportPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" icon={<Printer className="w-4 h-4" />} onClick={handlePrint}>{t('report_view.print_pdf')}</Button>
-            {canEdit && (
-              <Button variant="primary" icon={<Edit className="w-4 h-4" />} onClick={handleEdit}>{t('report_view.edit_btn')}</Button>
+            <Button variant="secondary" icon={<Printer className="w-4 h-4" />} onClick={handlePrint}>
+              {t('report_view.print_pdf')}
+            </Button>
+            {hasEditPermission && (
+              <Button variant="primary" icon={<Edit className="w-4 h-4" />} onClick={handleEdit}>
+                {t('report_view.edit_btn')}
+              </Button>
             )}
-            {canDelete && (
-              <Button variant="danger" icon={<Trash2 className="w-4 h-4" />} onClick={() => setShowDeleteModal(true)}>{t('report_view.delete_btn')}</Button>
+            {hasDeletePermission && (
+              <Button variant="danger" icon={<Trash2 className="w-4 h-4" />} onClick={() => setShowDeleteModal(true)}>
+                {t('report_view.delete_btn')}
+              </Button>
             )}
           </div>
         </div>
@@ -305,7 +348,9 @@ export function ViewReportPage() {
               </div>
               {category && (
                 <div className="mt-2">
-                  <span className="inline-block px-2 py-1 rounded-md text-xs font-medium" style={{ backgroundColor: `${category.color}15`, color: category.color }}>{category.name_ar}</span>
+                  <span className="inline-block px-2 py-1 rounded-md text-xs font-medium" style={{ backgroundColor: `${category.color}15`, color: category.color }}>
+                    {category.name_ar}
+                  </span>
                 </div>
               )}
             </div>
@@ -325,7 +370,9 @@ export function ViewReportPage() {
             </div>
             <div>
               <div className="text-sm font-semibold text-text-muted uppercase mb-2">{t('report_view.meta_status')}</div>
-              <span className={`inline-block px-3 py-1.5 rounded-full text-sm font-semibold border ${badge.className}`}>{badge.label}</span>
+              <span className={`inline-block px-3 py-1.5 rounded-full text-sm font-semibold border ${badge.className}`}>
+                {badge.label}
+              </span>
             </div>
           </div>
 
@@ -368,7 +415,9 @@ export function ViewReportPage() {
         </Card>
 
         <Card padding="lg" className="print:shadow-none print:border print:border-gray-300">
-          <h3 className="text-2xl font-bold text-text mb-6 print:border-b print:border-gray-300 print:pb-2">{t('report_view.data_section')}</h3>
+          <h3 className="text-2xl font-bold text-text mb-6 print:border-b print:border-gray-300 print:pb-2">
+            {t('report_view.data_section')}
+          </h3>
           {!currentReport.fields || currentReport.fields.length === 0 ? (
             <div className="text-center py-8 text-text-muted text-lg">{t('report_view.no_fields')}</div>
           ) : (
@@ -425,3 +474,5 @@ export function ViewReportPage() {
     </>
   );
 }
+
+export default ViewReportPage;

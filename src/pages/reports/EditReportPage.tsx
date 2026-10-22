@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, Save, Loader2 } from 'lucide-react';
+import { ArrowRight, Save, Loader2, Lock } from 'lucide-react';
 import { useReportsStore } from '../../stores/reports-store';
 import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore } from '../../stores/entity-store';
+import { usePermission } from '../../hooks/usePermission';
 import { Button, Card } from '../../components/ui';
 import { Loading } from '../../components/ui/Loading';
 import { DynamicField } from '../../components/reports/DynamicField';
@@ -96,6 +97,12 @@ export function EditReportPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
   const { activeEntity } = useEntityStore();
+  
+  // ⭐ فحص الصلاحيات
+  const { allowed: canEdit, loading: checkingEdit } = usePermission('reports.edit');
+  const { allowed: canEditOwn } = usePermission('reports.edit.own');
+  const { allowed: canManage } = usePermission('reports.manage');
+
   const {
     currentReport,
     loading,
@@ -162,7 +169,6 @@ export function EditReportPage() {
       setPeriodStart(currentReport.period_start || '');
       setPeriodEnd(currentReport.period_end || '');
 
-      // تهيئة prevCenterIdRef بالمركز الحالي حتى لا يعيد جلب المدير فوراً
       const centerSelectField = currentReport.fields?.find(
         (f: any) => f.field_type === 'center_select' || f.field_type === 'school_select'
       );
@@ -174,7 +180,7 @@ export function EditReportPage() {
     }
   }, [currentReport, initialized]);
 
-  // 4. جلب اسم مدير المركز عند تغيير المركز (مطابق لصفحة الإنشاء)
+  // 4. جلب اسم مدير المركز عند تغيير المركز
   useEffect(() => {
     if (!currentReport?.fields || currentReport.fields.length === 0 || !initialized) return;
 
@@ -240,7 +246,6 @@ export function EditReportPage() {
     fetchSelectedEntity();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    // ⭐ حماية من الخطأ إذا كان currentReport قيمته null
     currentReport 
       ? formData[
           currentReport.fields?.find(
@@ -298,6 +303,7 @@ export function EditReportPage() {
 
   const handleSubmit = async () => {
     if (!currentReport || !activeEntity || !user) return;
+    if (!canEdit && !canEditOwn && !canManage) return;
 
     if (!validate()) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -333,6 +339,24 @@ export function EditReportPage() {
   const handleCancel = () => {
     navigate(`/reports/${id}`);
   };
+
+  // ⭐ حماية الصفحة
+  if (checkingEdit) {
+    return <Loading message="جاري التحقق من الصلاحيات..." />;
+  }
+
+  if (!canEdit && !canEditOwn && !canManage) {
+    return (
+      <div className="p-6 text-center text-danger">
+        <Lock className="w-12 h-12 mx-auto mb-4 opacity-50" />
+        <h2 className="text-xl font-bold mb-2">لا تملك صلاحية الوصول</h2>
+        <p>ليس لديك صلاحية لتعديل هذا التقرير.</p>
+        <Button variant="ghost" className="mt-4" onClick={() => navigate('/reports')}>
+          العودة للتقارير
+        </Button>
+      </div>
+    );
+  }
 
   if (loading || !initialized) {
     return <Loading message={t('report_form.loading_report')} />;
@@ -437,7 +461,7 @@ export function EditReportPage() {
             variant="primary"
             icon={<Save className="w-4 h-4" />}
             onClick={handleSubmit}
-            disabled={saving}
+            disabled={saving || (!canEdit && !canEditOwn && !canManage)}
             loading={saving}
           >
             {t('report_form.save_changes')}
@@ -538,7 +562,7 @@ export function EditReportPage() {
           size="lg"
           icon={<Save className="w-5 h-5" />}
           onClick={handleSubmit}
-          disabled={saving}
+          disabled={saving || (!canEdit && !canEditOwn && !canManage)}
           loading={saving}
         >
           {t('report_form.save_changes')}
