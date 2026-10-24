@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -14,6 +14,8 @@ import {
   X,
   AlertCircle,
   GraduationCap,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore } from '../../stores/entity-store';
@@ -139,6 +141,11 @@ export function ReportsListPage() {
   // ⭐ حالة الصلاحيات
   const [hasCreatePermission, setHasCreatePermission] = useState(false);
   const [checkingPermissions, setCheckingPermissions] = useState(true);
+
+  // ⭐ حالات التمرير الأفقي
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const canViewAll = ['tech_support', 'edc_viewer', 'qa_chief'].includes(
     activeEntity?.roleCode || ''
@@ -313,6 +320,57 @@ export function ReportsListPage() {
       return `📝 ${t('reports_page.center_reports')}`;
     return `📝 ${t('reports_page.reports')}`;
   }, [activeEntity, t]);
+
+  // ⭐ دالة فحص التمرير
+  const checkScroll = () => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    if (maxScroll <= 0) {
+      setCanScrollLeft(false);
+      setCanScrollRight(false);
+      return;
+    }
+
+    const currentScroll = Math.abs(el.scrollLeft);
+    const scrolledFromStart = currentScroll > 2;
+    const scrolledFromEnd = currentScroll < maxScroll - 2;
+
+    // في RTL نعكس المنطق
+    setCanScrollLeft(scrolledFromEnd);
+    setCanScrollRight(scrolledFromStart);
+  };
+
+  useEffect(() => {
+    checkScroll();
+    const t = setTimeout(checkScroll, 100);
+
+    const el = tableScrollRef.current;
+    if (el) {
+      el.addEventListener('scroll', checkScroll);
+      window.addEventListener('resize', checkScroll);
+      return () => {
+        clearTimeout(t);
+        el.removeEventListener('scroll', checkScroll);
+        window.removeEventListener('resize', checkScroll);
+      };
+    }
+  }, [reports.length, filteredReports.length]);
+
+  const scrollTableLeft = () => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    const newPos = Math.abs(el.scrollLeft) + 300;
+    el.scrollTo({ left: -newPos, behavior: 'smooth' });
+  };
+
+  const scrollTableRight = () => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    const newPos = Math.max(0, Math.abs(el.scrollLeft) - 300);
+    el.scrollTo({ left: -newPos, behavior: 'smooth' });
+  };
 
   if (loading && reports.length === 0) {
     return <Loading message={t('reports_page.loading_reports')} />;
@@ -577,12 +635,36 @@ export function ReportsListPage() {
         </Card>
       )}
 
-      {/* Reports Table */}
+      {/* ⭐ Reports Table — Sticky Header + Horizontal Scroll Arrows */}
       {filteredReports.length > 0 && (
-        <Card padding="none">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-bg-secondary border-b border-border">
+        <Card padding="none" className="relative">
+          {/* ⭐ أزرار التمرير الأفقي — ثابتة فوق الجدول */}
+          {canScrollRight && (
+            <button
+              onClick={scrollTableRight}
+              className="absolute right-0 top-12 bottom-0 z-20 w-10 bg-gradient-to-l from-surface via-surface/90 to-transparent flex items-center justify-center hover:from-primary/10 transition-colors"
+              aria-label="تمرير لليمين"
+            >
+              <ChevronRight className="w-6 h-6 text-primary drop-shadow-sm" />
+            </button>
+          )}
+          {canScrollLeft && (
+            <button
+              onClick={scrollTableLeft}
+              className="absolute left-0 top-12 bottom-0 z-20 w-10 bg-gradient-to-r from-surface via-surface/90 to-transparent flex items-center justify-center hover:from-primary/10 transition-colors"
+              aria-label="تمرير لليسار"
+            >
+              <ChevronLeft className="w-6 h-6 text-primary drop-shadow-sm" />
+            </button>
+          )}
+
+          <div
+            ref={tableScrollRef}
+            className="overflow-auto max-h-[calc(100vh-280px)]"
+            style={{ WebkitOverflowScrolling: 'touch' }}
+          >
+            <table className="w-full relative">
+              <thead className="bg-bg-secondary border-b border-border sticky top-0 z-10 shadow-sm">
                 <tr>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">
                     {t('reports_page.table_report')}
@@ -633,7 +715,6 @@ export function ReportsListPage() {
                         </div>
                       </td>
 
-                      {/* ⭐ اسم المدرسة / المركز */}
                       <td className="px-4 py-4 hidden md:table-cell">
                         <div className="flex items-center gap-2 text-sm text-text">
                           <Building2 className="w-4 h-4 text-text-muted flex-shrink-0" />
@@ -643,7 +724,6 @@ export function ReportsListPage() {
                         </div>
                       </td>
 
-                      {/* ⭐ اسم المعلم */}
                       <td className="px-4 py-4 hidden md:table-cell">
                         <div className="flex items-center gap-2 text-sm text-text">
                           <GraduationCap className="w-4 h-4 text-text-muted flex-shrink-0" />
@@ -761,3 +841,5 @@ function TabButton({ active, onClick, label, count }: TabButtonProps) {
     </button>
   );
 }
+
+export default ReportsListPage;

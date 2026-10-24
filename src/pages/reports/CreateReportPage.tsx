@@ -99,7 +99,6 @@ export function CreateReportPage() {
   const { user } = useAuthStore();
   const { activeEntity } = useEntityStore();
   
-  // ⭐ فحص الصلاحيات
   const { allowed: canCreate, loading: checkingCreate } = usePermission('reports.create');
   
   const {
@@ -450,11 +449,16 @@ export function CreateReportPage() {
         ? (formData[centerSelectField.field_key] as string) 
         : activeEntity.entityId;
 
+      // ⭐ الحل الوحيد: نمرر المركز كـ entityId، والمنطقة كـ regionId
+      // هذا يحل مشكلة عرض اسم المركز، ويعمل مع سياسة الأمان الحالية (لأننا نمرر المنطقة)
+      const targetEntityId = selectedSchoolOrCenterId || activeEntity.entityId;
+      const correctRegionId = activeEntity.entityId;
+
       const reportId = await createReport({
         templateId: selectedTemplate.id,
         templateVersionId: selectedTemplate.current_version_id,
-        entityId: selectedSchoolOrCenterId || activeEntity.entityId, 
-        regionId: activeEntity.entityId, 
+        entityId: targetEntityId,
+        regionId: correctRegionId,
         data: formData,
         periodType: null,
         periodStart: null,
