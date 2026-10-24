@@ -45,6 +45,9 @@ git push origin main
 احذف النسخ الاحتياطي من SQL
 DROP TABLE IF EXISTS public._pw_reset_backup_edu;
 
+الرقم الوظيفي إياد النجار
+
+10248225
 
 
 

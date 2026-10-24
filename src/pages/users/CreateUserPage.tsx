@@ -475,9 +475,9 @@ function getEntityTypeName(typeCode: string): string {
   const names: Record<string, string> = {
     region: 'منطقة',
     school: 'مدرسة',
-    tls_center: 'مركز تطوير',
+    tls_center: 'مساحة تعلم مؤقتة',   // ✅ معدّل
     edu_unit: 'وحدة تربوية',
-    edc: 'مركز التطوير',
+    edc: 'مركز التطوير التربوي',       // ✅ معدّل
     qa_unit: 'وحدة ضمان الجودة',
   };
   return names[typeCode] || typeCode;
