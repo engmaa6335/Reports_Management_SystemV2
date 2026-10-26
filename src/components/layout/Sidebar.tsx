@@ -1,91 +1,54 @@
+// ═══════════════════════════════════════════════════════════
+// Sidebar — dynamic (reads from pages-store)
+// ═══════════════════════════════════════════════════════════
+
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  Home,
-  FileText,
-  BarChart3,
-  Bell,
-  Settings,
-  Users,
-  Building2,
-  Shield,
-  Palette,
-  LayoutTemplate,
-  ChevronLeft,
-  X,
-  Upload,
-  Grid,
-  RotateCcw,
-  Lock,
-} from 'lucide-react';
-import { useEntityStore } from '../../stores/entity-store';
-import { usePermission } from '../../hooks/usePermission';
-import type { RoleCode } from '../../types/app.types';
-
-interface SidebarItem {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  path: string;
-  permission?: string;
-  roles?: RoleCode[];
-  isSettings?: boolean;
-}
-
-interface SettingsSubItem {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-  path: string;
-  badge?: string;
-  permission?: string;
-}
+import { Settings, ChevronLeft, X } from 'lucide-react';
+import { usePagesStore } from '../../stores/pages-store';
+import { useAuthStore } from '../../stores/auth-store';
+import { DynamicIcon } from './IconMapper';
+import { pickLocalizedName } from '../../lib/i18n-helpers';
+import type { UserAccessiblePage } from '../../types/pages';
 
 interface SidebarProps {
   open: boolean;
 }
 
+// ═══════════════════════════════════════════════════════════
+// Component
+// ═══════════════════════════════════════════════════════════
+
 export function Sidebar({ open }: SidebarProps) {
   const { t, i18n } = useTranslation();
-  const { activeEntity } = useEntityStore();
+  const { user } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
-  const userRole = activeEntity?.roleCode;
   const isRTL = i18n.dir() === 'rtl';
+  const language = i18n.language;
 
-  // ⭐ فحص الصلاحيات (بناءً على الصلاحيات الأساسية التي تظهر في صورتك)
-  const { allowed: canViewNotifications } = usePermission('notifications.view');
-  
-  // التقارير
-  const { allowed: canViewReports } = usePermission('reports.view');
-  const { allowed: canViewOwnReports } = usePermission('reports.view.own');
-  const hasReportsAccess = canViewReports || canViewOwnReports;
-
-  // التجميعيات
-  const { allowed: canViewAggregates } = usePermission('aggregates.view');
-  const { allowed: canViewOwnAggregates } = usePermission('aggregates.view.own');
-  const hasAggregatesAccess = canViewAggregates || canViewOwnAggregates;
-
-  // الإعدادات
-  const { allowed: canManageThemes } = usePermission('themes.manage');
-  const { allowed: canManageUsers } = usePermission('users.manage');
-  const { allowed: canManageTemplates } = usePermission('templates.manage');
-  const { allowed: canManageSettings } = usePermission('settings.manage');
-  const { allowed: canViewSettings } = usePermission('settings.view');
-
-  const canAccessSettings =
-    canManageThemes ||
-    canManageUsers ||
-    canManageTemplates ||
-    canManageSettings ||
-    canViewSettings;
+  const { pages, loading, initialized, loadPages } = usePagesStore();
 
   const [settingsPopupOpen, setSettingsPopupOpen] = useState(false);
-  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
+  const [popupPosition, setPopupPosition] = useState({ bottom: 0, left: 0 });
   const popupRef = useRef<HTMLDivElement>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const [isMobile, setIsMobile] = useState(false);
+
+  // ═══════════════════════════════════════════
+  // Load pages on mount
+  // ═══════════════════════════════════════════
+
+  useEffect(() => {
+    if (user?.id && !initialized) {
+      loadPages();
+    }
+  }, [user?.id, initialized, loadPages]);
+
+  // ═══════════════════════════════════════════
+  // Mobile detection
+  // ═══════════════════════════════════════════
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 640);
@@ -94,150 +57,17 @@ export function Sidebar({ open }: SidebarProps) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const MENU_ITEMS: SidebarItem[] = [
-    {
-      id: 'home',
-      label: t('sidebar.home'),
-      icon: <Home className="w-5 h-5" />,
-      path: '/dashboard',
-    },
-    {
-      id: 'reports',
-      label: t('sidebar.reports'),
-      icon: <FileText className="w-5 h-5" />,
-      path: '/reports',
-    },
-    {
-      id: 'aggregates',
-      label: t('sidebar.aggregates'),
-      icon: <BarChart3 className="w-5 h-5" />,
-      path: '/aggregates',
-    },
-    {
-      id: 'notifications',
-      label: t('sidebar.notifications'),
-      icon: <Bell className="w-5 h-5" />,
-      path: '/notifications',
-    },
-    {
-      id: 'settings',
-      label: t('sidebar.settings'),
-      icon: <Settings className="w-5 h-5" />,
-      path: '/settings',
-      isSettings: true,
-    },
-  ];
-
-  const SETTINGS_SUB_ITEMS: SettingsSubItem[] = [
-    {
-      id: 'templates',
-      label: t('admin.templates'),
-      icon: <LayoutTemplate className="w-4 h-4" />,
-      path: '/settings/templates',
-      permission: 'templates.view',
-    },
-    {
-      id: 'notifications-admin',
-      label: t('admin.notifications'),
-      icon: <Bell className="w-4 h-4" />,
-      path: '/settings/notifications',
-      permission: 'notifications.manage',
-    },
-    {
-      id: 'users',
-      label: t('admin.users'),
-      icon: <Users className="w-4 h-4" />,
-      path: '/settings/users',
-      permission: 'users.view',
-    },
-    {
-      id: 'entities',
-      label: t('admin.entities'),
-      icon: <Building2 className="w-4 h-4" />,
-      path: '/settings/entities',
-      permission: 'entities.view',
-    },
-    {
-      id: 'permissions',
-      label: t('admin.roles'),
-      icon: <Shield className="w-4 h-4" />,
-      path: '/settings/permissions',
-      permission: 'permissions.manage',
-    },
-    {
-      id: 'roles-matrix',
-      label: t('settings.title'),
-      icon: <Grid className="w-4 h-4" />,
-      path: '/settings/roles',
-      permission: 'roles.view',
-    },
-    {
-      id: 'bulk-import',
-      label: t('common.import'),
-      icon: <Upload className="w-4 h-4" />,
-      path: '/settings/permissions/bulk-import',
-      permission: 'bulk_import.execute',
-      badge: 'Excel',
-    },
-    {
-      id: 'themes',
-      label: t('admin.themes'),
-      icon: <Palette className="w-4 h-4" />,
-      path: '/settings/themes',
-      permission: 'themes.view',
-    },
-    {
-      id: 'themes-reset',
-      label: t('settings.reset_themes'),
-      icon: <RotateCcw className="w-4 h-4" />,
-      path: '/settings/themes/reset',
-      permission: 'users.manage',
-    },
-  ];
-
-  const isPermissionGranted = (permission?: string) => {
-    if (!permission) return true;
-    if (permission === 'themes.manage') return canManageThemes;
-    if (permission === 'themes.view') return canManageThemes; // أو canViewThemes إذا أضفتها
-    if (permission === 'users.manage') return canManageUsers;
-    if (permission === 'users.view') return canManageUsers; // يمكنك إضافة usePermission('users.view') إذا أردت
-    if (permission === 'templates.manage') return canManageTemplates;
-    if (permission === 'templates.view') return canManageTemplates;
-    if (permission === 'settings.manage') return canManageSettings;
-    if (permission === 'settings.view') return canViewSettings;
-    return true;
-  };
-
-  const visibleItems = MENU_ITEMS.filter((item) => {
-    // ⭐ إخفاء الرئيسية (دائماً تظهر)
-    if (item.id === 'home') return true;
-
-    // ⭐ إخفاء "تقاريري" إذا لم يملك أي صلاحية عرض
-    if (item.id === 'reports') return hasReportsAccess;
-
-    // ⭐ إخفاء "التقارير التجميعية" إذا لم يملك أي صلاحية عرض
-    if (item.id === 'aggregates') return hasAggregatesAccess;
-
-    // ⭐ إخفاء "التنبيهات" إذا لم يملك صلاحية العرض
-    if (item.id === 'notifications') return canViewNotifications;
-
-    // ⭐ إخفاء "الإعدادات" إذا لم يملك أي صلاحية إعدادات
-    if (item.isSettings) return canAccessSettings;
-
-    return true;
-  });
-
-  const visibleSubItems = SETTINGS_SUB_ITEMS.filter((sub) => {
-    // ⭐ التصفية الدقيقة داخل الإعدادات
-    if (sub.id === 'themes' && !canManageThemes) return false;
-    if (sub.id === 'themes-reset' && !canManageUsers) return false;
-    
-    return isPermissionGranted(sub.permission);
-  });
+  // ═══════════════════════════════════════════
+  // Close popup on route change
+  // ═══════════════════════════════════════════
 
   useEffect(() => {
     setSettingsPopupOpen(false);
   }, [location.pathname]);
+
+  // ═══════════════════════════════════════════
+  // Close popup on outside click / escape
+  // ═══════════════════════════════════════════
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -264,17 +94,25 @@ export function Sidebar({ open }: SidebarProps) {
     };
   }, [settingsPopupOpen]);
 
+  // ═══════════════════════════════════════════
+  // Handlers
+  // ═══════════════════════════════════════════
+
   const handleSettingsClick = (e: React.MouseEvent) => {
     e.preventDefault();
     if (settingsButtonRef.current) {
       const rect = settingsButtonRef.current.getBoundingClientRect();
-      const top = rect.top - 8; 
+
+      // ⭐ popup ينمو للأعلى من زر الإعدادات
+      const bottom = window.innerHeight - rect.bottom + 8;
+
       let left = isRTL ? rect.left - 260 : rect.right + 8;
       if (left < 8) left = 8;
       if (left + 260 > window.innerWidth - 8) {
         left = window.innerWidth - 260 - 8;
       }
-      setPopupPosition({ top, left });
+
+      setPopupPosition({ bottom, left });
     }
     setSettingsPopupOpen((prev) => !prev);
   };
@@ -283,6 +121,41 @@ export function Sidebar({ open }: SidebarProps) {
     navigate(path);
     setSettingsPopupOpen(false);
   };
+
+  // ═══════════════════════════════════════════
+  // Derived data
+  // ═══════════════════════════════════════════
+
+  // ⭐ Dashboard is always visible (hardcoded exception)
+  const dashboardPage: UserAccessiblePage | null =
+    pages.find((p) => p.page_code === 'dashboard') || {
+      page_code: 'dashboard',
+      name_ar: 'الرئيسية',
+      name_en: 'Dashboard',
+      module: 'main',
+      route_path: '/dashboard',
+      icon: 'Home',
+      order_index: 10,
+      permissions: ['view'],
+    };
+
+  // ⭐ All main pages except dashboard + settings parent
+  const mainPages = pages
+    .filter((p) => p.module === 'main' && p.page_code !== 'dashboard')
+    .filter((p) => p.page_code !== 'settings')
+    .sort((a, b) => a.order_index - b.order_index);
+
+  // ⭐ Settings sub-pages
+  const settingsPages = pages
+    .filter((p) => p.module === 'settings' && p.page_code !== 'settings')
+    .sort((a, b) => a.order_index - b.order_index);
+
+  const showSettings = settingsPages.length > 0;
+  const settingsIsActive = location.pathname.startsWith('/settings');
+
+  // ═══════════════════════════════════════════
+  // Render
+  // ═══════════════════════════════════════════
 
   return (
     <>
@@ -302,46 +175,81 @@ export function Sidebar({ open }: SidebarProps) {
         `}
       >
         <nav className="p-3 space-y-1 overflow-y-auto h-full pb-20">
-          {visibleItems.map((item) => {
-            if (item.isSettings) {
-              const isActive = location.pathname.startsWith('/settings');
-              return (
-                <button
-                  key={item.id}
-                  ref={settingsButtonRef}
-                  onClick={handleSettingsClick}
-                  className={`
-                    w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg
-                    transition-colors text-sm font-medium text-right
-                    ${isActive || settingsPopupOpen ? 'bg-primary text-white shadow-soft' : 'text-text-secondary hover:bg-bg-secondary hover:text-text'}
-                  `}
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="flex-shrink-0">{item.icon}</span>
-                    <span className="truncate">{item.label}</span>
-                  </span>
-                  <ChevronLeft
-                    className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${settingsPopupOpen ? 'rotate-90' : '-rotate-90'}`}
-                  />
-                </button>
-              );
-            }
-            return (
+          {/* Loading skeleton */}
+          {loading && !initialized && (
+            <div className="space-y-2">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="h-10 rounded-lg bg-bg-secondary animate-pulse"
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Dashboard (always visible) */}
+          {!loading && (
+            <NavLink
+              to={dashboardPage.route_path}
+              end
+              className={({ isActive }) => `
+                flex items-center gap-3 px-3 py-2.5 rounded-lg
+                transition-colors text-sm font-medium
+                ${isActive ? 'bg-primary text-white shadow-soft' : 'text-text-secondary hover:bg-bg-secondary hover:text-text'}
+              `}
+            >
+              <span className="flex-shrink-0">
+                <DynamicIcon name={dashboardPage.icon} />
+              </span>
+              <span className="truncate">
+                {pickLocalizedName(dashboardPage, language) || t('sidebar.home')}
+              </span>
+            </NavLink>
+          )}
+
+          {/* Main pages (dynamic) */}
+          {!loading &&
+            mainPages.map((page) => (
               <NavLink
-                key={item.id}
-                to={item.path}
-                end={item.path === '/dashboard'}
+                key={page.page_code}
+                to={page.route_path}
                 className={({ isActive }) => `
                   flex items-center gap-3 px-3 py-2.5 rounded-lg
                   transition-colors text-sm font-medium
                   ${isActive ? 'bg-primary text-white shadow-soft' : 'text-text-secondary hover:bg-bg-secondary hover:text-text'}
                 `}
               >
-                <span className="flex-shrink-0">{item.icon}</span>
-                <span className="truncate">{item.label}</span>
+                <span className="flex-shrink-0">
+                  <DynamicIcon name={page.icon} />
+                </span>
+                <span className="truncate">
+                  {pickLocalizedName(page, language)}
+                </span>
               </NavLink>
-            );
-          })}
+            ))}
+
+          {/* Settings button (dynamic) */}
+          {!loading && showSettings && (
+            <button
+              ref={settingsButtonRef}
+              onClick={handleSettingsClick}
+              className={`
+                w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg
+                transition-colors text-sm font-medium text-right
+                ${settingsIsActive || settingsPopupOpen ? 'bg-primary text-white shadow-soft' : 'text-text-secondary hover:bg-bg-secondary hover:text-text'}
+              `}
+            >
+              <span className="flex items-center gap-3">
+                <span className="flex-shrink-0">
+                  <Settings className="w-5 h-5" />
+                </span>
+                <span className="truncate">{t('sidebar.settings')}</span>
+              </span>
+              <ChevronLeft
+                className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${settingsPopupOpen ? 'rotate-90' : '-rotate-90'}`}
+              />
+            </button>
+          )}
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-border bg-bg-secondary">
@@ -351,16 +259,16 @@ export function Sidebar({ open }: SidebarProps) {
         </div>
       </aside>
 
-      {/* Desktop Popup */}
-      {!isMobile && settingsPopupOpen && (
+      {/* ═══ Desktop Popup (grows upward) ═══ */}
+      {!isMobile && settingsPopupOpen && showSettings && (
         <div
           ref={popupRef}
           style={{
             position: 'fixed',
-            top: popupPosition.top,
+            bottom: popupPosition.bottom,
             left: popupPosition.left,
             width: '260px',
-            maxHeight: 'calc(100vh - 100px)',
+            maxHeight: `calc(100vh - ${popupPosition.bottom + 80}px)`,
             overflowY: 'auto',
           }}
           className="bg-surface border border-border rounded-xl shadow-2xl z-50"
@@ -374,29 +282,26 @@ export function Sidebar({ open }: SidebarProps) {
             </div>
           </div>
           <div className="py-2">
-            {visibleSubItems.map((subItem) => {
+            {settingsPages.map((page) => {
               const isActive =
-                location.pathname === subItem.path ||
-                location.pathname.startsWith(subItem.path + '/');
+                location.pathname === page.route_path ||
+                location.pathname.startsWith(page.route_path + '/');
               return (
                 <button
-                  key={subItem.id}
-                  onClick={() => handleSubItemClick(subItem.path)}
+                  key={page.page_code}
+                  onClick={() => handleSubItemClick(page.route_path)}
                   className={`
                     w-full flex items-center gap-3 px-4 py-2.5 text-sm
                     transition-colors text-right border-r-4
                     ${isActive ? 'bg-primary/10 text-primary border-r-primary font-medium' : 'text-text-secondary hover:bg-bg-secondary hover:text-text border-r-transparent'}
                   `}
                 >
-                  <span className="flex-shrink-0">{subItem.icon}</span>
-                  <span className="flex-1 truncate text-right">
-                    {subItem.label}
+                  <span className="flex-shrink-0">
+                    <DynamicIcon name={page.icon} className="w-4 h-4" />
                   </span>
-                  {subItem.badge && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-medium flex-shrink-0">
-                      {subItem.badge}
-                    </span>
-                  )}
+                  <span className="flex-1 truncate text-right">
+                    {pickLocalizedName(page, language)}
+                  </span>
                 </button>
               );
             })}
@@ -404,8 +309,8 @@ export function Sidebar({ open }: SidebarProps) {
         </div>
       )}
 
-      {/* Mobile Bottom Sheet */}
-      {isMobile && settingsPopupOpen && (
+      {/* ═══ Mobile Bottom Sheet ═══ */}
+      {isMobile && settingsPopupOpen && showSettings && (
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
           onClick={() => setSettingsPopupOpen(false)}
@@ -433,29 +338,26 @@ export function Sidebar({ open }: SidebarProps) {
               </button>
             </div>
             <div className="p-2">
-              {visibleSubItems.map((subItem) => {
+              {settingsPages.map((page) => {
                 const isActive =
-                  location.pathname === subItem.path ||
-                  location.pathname.startsWith(subItem.path + '/');
+                  location.pathname === page.route_path ||
+                  location.pathname.startsWith(page.route_path + '/');
                 return (
                   <button
-                    key={subItem.id}
-                    onClick={() => handleSubItemClick(subItem.path)}
+                    key={page.page_code}
+                    onClick={() => handleSubItemClick(page.route_path)}
                     className={`
                       w-full flex items-center gap-3 px-4 py-3 text-sm rounded-lg
                       transition-colors text-right
                       ${isActive ? 'bg-primary/10 text-primary font-medium' : 'text-text-secondary hover:bg-bg-secondary'}
                     `}
                   >
-                    <span className="flex-shrink-0">{subItem.icon}</span>
-                    <span className="flex-1 truncate text-right">
-                      {subItem.label}
+                    <span className="flex-shrink-0">
+                      <DynamicIcon name={page.icon} className="w-4 h-4" />
                     </span>
-                    {subItem.badge && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning font-medium">
-                        {subItem.badge}
-                      </span>
-                    )}
+                    <span className="flex-1 truncate text-right">
+                      {pickLocalizedName(page, language)}
+                    </span>
                   </button>
                 );
               })}

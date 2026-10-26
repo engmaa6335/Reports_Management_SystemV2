@@ -1,3 +1,7 @@
+// ═══════════════════════════════════════════════════════════
+// RolesPage — Dynamic permissions by page (with fixed header)
+// ═══════════════════════════════════════════════════════════
+
 import { useEffect, useMemo, useState } from 'react';
 import {
   Shield,
@@ -7,12 +11,23 @@ import {
   Loader2,
   CheckCircle2,
   Lock,
+  ChevronDown,
+  FileText,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { usePermission } from '../../hooks/usePermission';
 import { Card, Button } from '../../components/ui';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
-import { getActiveRoles, getAllPermissions } from '../../lib/permissions-api';
+import {
+  getActiveRoles,
+  getPagesWithPermissions,
+  getOrphanPermissions,
+  type PageWithPermissions,
+  type OrphanPermission,
+} from '../../lib/permissions-api';
 import { supabase } from '../../lib/supabase';
+import { DynamicIcon } from '../../components/layout/IconMapper';
+import { pickLocalizedName } from '../../lib/i18n-helpers';
 
 // ═══════════════════════════════════════════════════════════
 // Types
@@ -27,43 +42,33 @@ interface Role {
   hierarchy_level: number;
 }
 
-interface Permission {
-  id: string;
-  code: string;
-  name_ar: string;
-  category: string;
-  resource: string;
-  action: string;
-  qualifier: string | null;
-}
-
 // ═══════════════════════════════════════════════════════════
 // Component
 // ═══════════════════════════════════════════════════════════
 
 export function RolesPage() {
-  // ⭐ فحص الصلاحيات
+  const { i18n } = useTranslation();
+  const language = i18n.language;
+
   const { allowed: canView, loading: checkingView } = usePermission('roles.view');
   const { allowed: canManageRoles } = usePermission('roles.manage');
   const { allowed: canManagePermissions } = usePermission('permissions.manage');
-
   const canEdit = canManageRoles || canManagePermissions;
 
   const [roles, setRoles] = useState<Role[]>([]);
-  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [pages, setPages] = useState<PageWithPermissions[]>([]);
+  const [orphans, setOrphans] = useState<OrphanPermission[]>([]);
+
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [rolePermissions, setRolePermissions] = useState<string[]>([]);
   const [originalRolePermissions, setOriginalRolePermissions] = useState<string[]>([]);
-  
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set());
 
-  // ═══════════════════════════════════════════════════════════
-  // Confirm Modal State
-  // ═══════════════════════════════════════════════════════════
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
     title: string;
@@ -102,21 +107,32 @@ export function RolesPage() {
     }
   };
 
-  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
   // Load Data
-  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
 
   useEffect(() => {
     async function load() {
       if (!canView) return;
       try {
         setLoading(true);
-        const [rolesData, permsData] = await Promise.all([
+
+        const [rolesData, pagesData] = await Promise.all([
           getActiveRoles(),
-          getAllPermissions(),
+          getPagesWithPermissions(),
         ]);
+
+        // ⭐ Use permission_resource (not code) for orphan detection
+        const linkedResources = pagesData
+          .map((p) => p.permission_resource)
+          .filter((r): r is string => !!r);
+
+        const orphanData = await getOrphanPermissions(linkedResources);
+
         setRoles(rolesData);
-        setPermissions(permsData);
+        setPages(pagesData);
+        setOrphans(orphanData);
+
         if (rolesData.length > 0) {
           setSelectedRole(rolesData[0]);
         }
@@ -129,7 +145,7 @@ export function RolesPage() {
     load();
   }, [canView]);
 
-  // تحميل صلاحيات الدور المحدد
+  // Load role permissions
   useEffect(() => {
     async function loadRolePermissions() {
       if (!selectedRole) return;
@@ -138,7 +154,7 @@ export function RolesPage() {
           .from('role_permissions')
           .select('permission_id')
           .eq('role_id', selectedRole.id);
-        
+
         if (error) throw error;
         const ids = data.map((rp) => rp.permission_id);
         setRolePermissions(ids);
@@ -150,39 +166,42 @@ export function RolesPage() {
     loadRolePermissions();
   }, [selectedRole]);
 
-  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
   // Computed
-  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
 
-  const categories = useMemo(() => {
-    const set = new Set(permissions.map((p) => p.category));
-    return Array.from(set).sort();
-  }, [permissions]);
-
-  const filteredPermissions = useMemo(() => {
+  const filteredPages = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return permissions.filter((p) => {
-      const matchSearch =
-        !q ||
-        p.name_ar.toLowerCase().includes(q) ||
-        p.code.toLowerCase().includes(q) ||
-        (p.qualifier && p.qualifier.toLowerCase().includes(q));
-      
-      const matchCategory =
-        categoryFilter === 'all' || p.category === categoryFilter;
-      
-      return matchSearch && matchCategory;
-    });
-  }, [permissions, search, categoryFilter]);
+    if (!q) return pages;
+    return pages
+      .map((page) => ({
+        ...page,
+        permissions: page.permissions.filter(
+          (p) =>
+            p.code.toLowerCase().includes(q) ||
+            p.name_ar.toLowerCase().includes(q) ||
+            p.action.toLowerCase().includes(q)
+        ),
+      }))
+      .filter(
+        (page) =>
+          page.code.toLowerCase().includes(q) ||
+          page.name_ar.toLowerCase().includes(q) ||
+          (page.name_en || '').toLowerCase().includes(q) ||
+          page.permissions.length > 0
+      );
+  }, [pages, search]);
 
-  const groupedPermissions = useMemo(() => {
-    const groups: Record<string, Permission[]> = {};
-    filteredPermissions.forEach((p) => {
-      if (!groups[p.category]) groups[p.category] = [];
-      groups[p.category].push(p);
-    });
-    return groups;
-  }, [filteredPermissions]);
+  const filteredOrphans = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return orphans;
+    return orphans.filter(
+      (p) =>
+        p.code.toLowerCase().includes(q) ||
+        p.name_ar.toLowerCase().includes(q) ||
+        p.action.toLowerCase().includes(q)
+    );
+  }, [orphans, search]);
 
   const hasChanges = useMemo(() => {
     if (rolePermissions.length !== originalRolePermissions.length) return true;
@@ -190,9 +209,9 @@ export function RolesPage() {
     return originalRolePermissions.some((id) => !set.has(id));
   }, [rolePermissions, originalRolePermissions]);
 
-  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
   // Handlers
-  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
 
   const togglePermission = (permissionId: string) => {
     if (!canEdit) return;
@@ -203,18 +222,26 @@ export function RolesPage() {
     );
   };
 
-  const toggleAllInCategory = (category: string, checked: boolean) => {
-    if (!canEdit) return;
-    const categoryIds = filteredPermissions
-      .filter((p) => p.category === category)
-      .map((p) => p.id);
+  const togglePage = (pageCode: string) => {
+    setExpandedPages((prev) => {
+      const next = new Set(prev);
+      if (next.has(pageCode)) {
+        next.delete(pageCode);
+      } else {
+        next.add(pageCode);
+      }
+      return next;
+    });
+  };
 
+  const toggleAllInPage = (page: PageWithPermissions, checked: boolean) => {
+    if (!canEdit) return;
+    const ids = page.permissions.map((p) => p.id);
     setRolePermissions((prev) => {
       if (checked) {
-        return Array.from(new Set([...prev, ...categoryIds]));
-      } else {
-        return prev.filter((id) => !categoryIds.includes(id));
+        return Array.from(new Set([...prev, ...ids]));
       }
+      return prev.filter((id) => !ids.includes(id));
     });
   };
 
@@ -222,7 +249,7 @@ export function RolesPage() {
     if (!selectedRole || !canEdit) return;
     try {
       setSaving(true);
-      
+
       const toRemove = originalRolePermissions.filter(
         (id) => !rolePermissions.includes(id)
       );
@@ -252,7 +279,7 @@ export function RolesPage() {
       }
 
       setOriginalRolePermissions(rolePermissions);
-      
+
       showConfirm({
         title: 'نجاح',
         message: 'تم حفظ التغييرات بنجاح',
@@ -277,9 +304,9 @@ export function RolesPage() {
     setRolePermissions(originalRolePermissions);
   };
 
-  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
   // Render Guards
-  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
 
   if (checkingView) {
     return (
@@ -307,26 +334,28 @@ export function RolesPage() {
     );
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
   // Main Render
-  // ═══════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div>
+    <div
+      className="max-w-7xl mx-auto flex flex-col gap-4"
+      style={{ height: 'calc(100vh - 8rem)' }}
+    >
+      {/* ═══ Fixed Header ═══ */}
+      <div className="flex-shrink-0">
         <h1 className="text-2xl font-bold text-text flex items-center gap-2">
           <Shield className="w-6 h-6 text-primary" />
           إدارة الأدوار والصلاحيات
         </h1>
         <p className="text-text-secondary text-sm mt-1">
-          عرض وتعديل صلاحيات الأدوار في النظام
+          عرض وتعديل صلاحيات الأدوار — مجمّعة حسب الصفحات
         </p>
       </div>
 
-      {/* Error */}
       {error && (
-        <Card padding="md" className="border-danger bg-danger/5">
+        <Card padding="md" className="border-danger bg-danger/5 flex-shrink-0">
           <div className="text-danger text-sm flex items-center gap-2">
             <AlertTriangle className="w-5 h-5" />
             {error}
@@ -334,14 +363,15 @@ export function RolesPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Sidebar: Roles List */}
-        <div className="lg:col-span-1 space-y-4">
-          <Card padding="md">
-            <h3 className="text-sm font-bold text-text-muted mb-3 uppercase">
+      {/* ═══ Main Grid ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 flex-1 min-h-0">
+        {/* LEFT: Roles Sidebar */}
+        <div className="lg:col-span-1 flex flex-col min-h-0">
+          <Card padding="md" className="flex flex-col min-h-0 h-full">
+            <h3 className="text-sm font-bold text-text-muted mb-3 uppercase flex-shrink-0">
               الأدوار ({roles.length})
             </h3>
-            <div className="space-y-1">
+            <div className="space-y-1 overflow-y-auto flex-1 min-h-0 -mx-2 px-2">
               {roles.map((role) => (
                 <button
                   key={role.id}
@@ -356,7 +386,13 @@ export function RolesPage() {
                   `}
                 >
                   <div className="font-medium">{role.name_ar}</div>
-                  <div className={`text-xs ${selectedRole?.id === role.id ? 'text-white/70' : 'text-text-muted'}`}>
+                  <div
+                    className={`text-xs ${
+                      selectedRole?.id === role.id
+                        ? 'text-white/70'
+                        : 'text-text-muted'
+                    }`}
+                  >
                     {role.code}
                   </div>
                 </button>
@@ -365,14 +401,17 @@ export function RolesPage() {
           </Card>
         </div>
 
-        {/* Main: Permissions Matrix */}
-        <div className="lg:col-span-3 space-y-4">
+        {/* RIGHT: Permissions */}
+        <div className="lg:col-span-3 flex flex-col min-h-0 gap-3">
           {selectedRole && (
             <>
-              {/* Role Header */}
-              <Card padding="md" className="flex items-center justify-between flex-wrap gap-3">
+              {/* Fixed Role Header */}
+              <Card
+                padding="md"
+                className="flex-shrink-0 flex items-center justify-between flex-wrap gap-3"
+              >
                 <div>
-                  <h2 className="text-lg font-bold text-text flex items-center gap-2">
+                  <h2 className="text-lg font-bold text-text">
                     صلاحيات: {selectedRole.name_ar}
                   </h2>
                   <p className="text-xs text-text-muted">
@@ -383,7 +422,6 @@ export function RolesPage() {
                   <span className="text-sm text-text-muted">
                     {rolePermissions.length} صلاحية مفعلة
                   </span>
-                  {/* ⭐ أزرار الحفظ تظهر فقط لمن يملك الصلاحية */}
                   {canEdit && hasChanges && (
                     <>
                       <Button variant="ghost" size="sm" onClick={handleCancel}>
@@ -403,67 +441,155 @@ export function RolesPage() {
                 </div>
               </Card>
 
-              {/* Filters */}
-              <Card padding="md">
-                <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
-                  <div className="flex-1 relative">
-                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-                    <input
-                      type="text"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="ابحث بالاسم أو المفتاح..."
-                      className="w-full pr-10 pl-3 py-2 rounded-lg border border-border bg-surface text-sm"
-                    />
-                  </div>
-                  <select
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="px-3 py-2 rounded-lg border border-border bg-surface text-sm"
-                  >
-                    <option value="all">كل الوحدات</option>
-                    {categories.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {getCategoryLabel(cat)}
-                      </option>
-                    ))}
-                  </select>
+              {/* Fixed Search Bar */}
+              <Card padding="md" className="flex-shrink-0">
+                <div className="relative">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="ابحث في الصفحات والصلاحيات..."
+                    className="w-full pr-10 pl-3 py-2 rounded-lg border border-border bg-surface text-sm"
+                  />
                 </div>
               </Card>
 
-              {/* Permissions by Category */}
-              {Object.keys(groupedPermissions).length === 0 ? (
-                <Card padding="lg" className="text-center">
-                  <p className="text-text-muted">لا توجد نتائج مطابقة</p>
-                </Card>
-              ) : (
-                Object.entries(groupedPermissions).map(([category, perms]) => {
-                  const allChecked = perms.every((p) =>
+              {/* Scrollable Permissions List */}
+              <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-3">
+                {filteredPages.map((page) => {
+                  const expanded = expandedPages.has(page.code);
+                  const pagePermCount = page.permissions.filter((p) =>
                     rolePermissions.includes(p.id)
-                  );
+                  ).length;
+                  const allChecked =
+                    page.permissions.length > 0 &&
+                    page.permissions.every((p) => rolePermissions.includes(p.id));
+
                   return (
-                    <Card key={category} padding="md">
-                      <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
-                        <h3 className="text-sm font-bold text-text">
-                          {getCategoryLabel(category)} ({perms.length})
-                        </h3>
-                        {/* ⭐ تحديد الكل يظهر فقط لمن يملك الصلاحية */}
-                        {canEdit && (
-                          <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={allChecked}
-                              onChange={(e) =>
-                                toggleAllInCategory(category, e.target.checked)
-                              }
-                              className="w-3.5 h-3.5"
-                            />
-                            تحديد الكل
-                          </label>
-                        )}
+                    <Card key={page.code} padding="none" className="overflow-hidden">
+                      <button
+                        onClick={() => togglePage(page.code)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-bg-secondary/50 transition-colors text-right"
+                      >
+                        <ChevronDown
+                          className={`w-4 h-4 text-text-muted transition-transform flex-shrink-0 ${
+                            expanded ? '' : '-rotate-90'
+                          }`}
+                        />
+                        <span className="flex-shrink-0 text-primary">
+                          <DynamicIcon name={page.icon} className="w-5 h-5" />
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-text text-sm">
+                            {pickLocalizedName(page, language)}
+                          </div>
+                          <div className="text-xs text-text-muted font-mono">
+                            {page.code}
+                            {page.permission_resource &&
+                              page.permission_resource !== page.code && (
+                                <span className="ml-2 text-info">
+                                  → {page.permission_resource}
+                                </span>
+                              )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-xs text-text-muted">
+                            {pagePermCount} / {page.permissions.length}
+                          </span>
+                          {canEdit && page.permissions.length > 0 && (
+                            <label
+                              className="flex items-center gap-1 text-xs cursor-pointer"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={allChecked}
+                                onChange={(e) =>
+                                  toggleAllInPage(page, e.target.checked)
+                                }
+                                className="w-3.5 h-3.5"
+                              />
+                              الكل
+                            </label>
+                          )}
+                        </div>
+                      </button>
+
+                      {expanded && page.permissions.length > 0 && (
+                        <div className="px-4 pb-3 pt-1 border-t border-border bg-bg-secondary/20">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                            {page.permissions.map((perm) => {
+                              const checked = rolePermissions.includes(perm.id);
+                              return (
+                                <label
+                                  key={perm.id}
+                                  className={`
+                                    flex items-start gap-2 p-2 rounded-lg transition-colors
+                                    ${canEdit ? 'cursor-pointer' : 'cursor-default'}
+                                    ${
+                                      checked
+                                        ? 'bg-success/5 border border-success/30'
+                                        : 'bg-surface border border-border hover:bg-bg-secondary'
+                                    }
+                                  `}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => togglePermission(perm.id)}
+                                    className="mt-0.5 w-4 h-4"
+                                    disabled={!canEdit}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-text">
+                                      {perm.name_ar}
+                                    </div>
+                                    <div className="text-xs text-text-muted font-mono truncate">
+                                      {perm.action}
+                                      {perm.qualifier && (
+                                        <span className="ml-1 text-warning">
+                                          ({perm.qualifier})
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {checked && (
+                                    <CheckCircle2 className="w-4 h-4 text-success flex-shrink-0" />
+                                  )}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {expanded && page.permissions.length === 0 && (
+                        <div className="px-4 pb-3 pt-2 border-t border-border text-xs text-text-muted text-center">
+                          لا توجد صلاحيات معرّفة لهذه الصفحة
+                        </div>
+                      )}
+                    </Card>
+                  );
+                })}
+
+                {filteredOrphans.length > 0 && (
+                  <Card padding="none" className="overflow-hidden border-warning/30">
+                    <div className="flex items-center gap-3 px-4 py-3 bg-warning/5">
+                      <FileText className="w-5 h-5 text-warning" />
+                      <div className="flex-1">
+                        <div className="font-medium text-text text-sm">
+                          صلاحيات فرعية (غير مرتبطة بصفحة)
+                        </div>
+                        <div className="text-xs text-text-muted">
+                          {filteredOrphans.length} صلاحية — مثل التقارير المتخصصة
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {perms.map((perm) => {
+                    </div>
+                    <div className="px-4 pb-3 pt-1 bg-bg-secondary/20">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                        {filteredOrphans.map((perm) => {
                           const checked = rolePermissions.includes(perm.id);
                           return (
                             <label
@@ -491,6 +617,11 @@ export function RolesPage() {
                                 </div>
                                 <div className="text-xs text-text-muted font-mono truncate">
                                   {perm.code}
+                                  {perm.qualifier && (
+                                    <span className="ml-1 text-warning">
+                                      ({perm.qualifier})
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                               {checked && (
@@ -500,16 +631,21 @@ export function RolesPage() {
                           );
                         })}
                       </div>
-                    </Card>
-                  );
-                })
-              )}
+                    </div>
+                  </Card>
+                )}
+
+                {filteredPages.length === 0 && filteredOrphans.length === 0 && (
+                  <Card padding="lg" className="text-center">
+                    <p className="text-text-muted">لا توجد نتائج مطابقة</p>
+                  </Card>
+                )}
+              </div>
             </>
           )}
         </div>
       </div>
 
-      {/* Confirm Modal */}
       <ConfirmModal
         open={confirmState.open}
         title={confirmState.title}
@@ -522,31 +658,6 @@ export function RolesPage() {
       />
     </div>
   );
-}
-
-// ═══════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════
-
-function getCategoryLabel(category: string): string {
-  const labels: Record<string, string> = {
-    reports: 'التقارير',
-    aggregates: 'التجميعيات',
-    notifications: 'التنبيهات',
-    themes: 'الثيمات',
-    admin: 'الإدارة',
-    entities: 'الكيانات',
-    users: 'المستخدمين',
-    roles: 'الأدوار',
-    permissions: 'الصلاحيات',
-    audit: 'التدقيق',
-    settings: 'الإعدادات',
-    templates: 'القوالب',
-    subjects: 'المواد',
-    regions: 'المناطق',
-    bulk_import: 'الاستيراد الجماعي',
-  };
-  return labels[category] || category;
 }
 
 export default RolesPage;

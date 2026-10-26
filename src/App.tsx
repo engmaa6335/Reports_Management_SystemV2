@@ -12,6 +12,7 @@ import { supabase } from './lib/supabase';
 import { useAuthStore } from './stores/auth-store';
 import { useEntityStore } from './stores/entity-store';
 import { useThemeStore } from './stores/theme-store';
+import { usePagesStore } from './stores/pages-store';
 import { usePermission } from './hooks/usePermission';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
 import { MainLayout } from './components/layout/MainLayout';
@@ -26,6 +27,12 @@ import AggregatesListPage from './pages/aggregates/AggregatesListPage';
 import { CreateAggregatePage } from './pages/aggregates/CreateAggregatePage';
 import { ViewAggregatePage } from './pages/aggregates/ViewAggregatePage';
 import { EditAggregatePage } from './pages/aggregates/EditAggregatePage';
+
+// ⭐ Aggregate Summaries
+import { SummariesListPage } from './pages/aggregate-summaries/SummariesListPage';
+import { CreateSummaryPage } from './pages/aggregate-summaries/CreateSummaryPage';
+import { ViewSummaryPage } from './pages/aggregate-summaries/ViewSummaryPage';
+
 import { Loading } from './components/ui/Loading';
 import { NotificationsPage } from './pages/notifications/NotificationsPage';
 
@@ -48,6 +55,7 @@ import { FieldFormPage } from './pages/admin/templates/FieldFormPage';
 // ⭐ Settings
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsPage } from './pages/settings/SettingsPage';
+import { AggregateSummariesSettingsPage } from './pages/settings/AggregateSummariesSettingsPage';
 
 // ⭐ Notifications Admin
 import { NotificationsAdminPage } from './pages/admin/notifications/NotificationsAdminPage';
@@ -77,7 +85,13 @@ import ProfilePage from './pages/profile/ProfilePage';
 // ⭐ حماية المسارات (توجيه فوري)
 // ═══════════════════════════════════════════════════════════
 
-function RequirePermission({ permission, children }: { permission: string; children: React.ReactNode }) {
+function RequirePermission({
+  permission,
+  children,
+}: {
+  permission: string;
+  children: React.ReactNode;
+}) {
   const { allowed, loading } = usePermission(permission);
 
   if (loading) {
@@ -85,7 +99,6 @@ function RequirePermission({ permission, children }: { permission: string; child
   }
 
   if (!allowed) {
-    // ⭐ نستخدم replace لمنع المستخدم من الرجوع للصفحة
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -114,6 +127,11 @@ function App() {
   const initTheme = useThemeStore((s) => s.init);
   const { i18n } = useTranslation();
 
+  // ⭐ Pages store
+  const loadPages = usePagesStore((s) => s.loadPages);
+  const clearPages = usePagesStore((s) => s.clearPages);
+  const pagesInitialized = usePagesStore((s) => s.initialized);
+
   useEffect(() => {
     initialize();
   }, [initialize]);
@@ -124,11 +142,19 @@ function App() {
     }
   }, [user, entitiesInitialized, loadUserEntities]);
 
+  // ⭐ Load pages after login (for dynamic sidebar)
+  useEffect(() => {
+    if (user?.id && !pagesInitialized) {
+      loadPages();
+    }
+  }, [user?.id, pagesInitialized, loadPages]);
+
   useEffect(() => {
     if (initialized && !user) {
       clearEntities();
+      clearPages();
     }
-  }, [initialized, user, clearEntities]);
+  }, [initialized, user, clearEntities, clearPages]);
 
   useEffect(() => {
     if (user?.id) {
@@ -195,55 +221,115 @@ function App() {
           <Route path="/aggregates/:id" element={<ViewAggregatePage />} />
           <Route path="/aggregates/:id/edit" element={<EditAggregatePage />} />
 
+          {/* ⭐ Aggregate Summaries */}
+          <Route
+            path="/aggregate-summaries"
+            element={
+              <RequirePermission permission="aggregate_summaries.view">
+                <SummariesListPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/aggregate-summaries/new"
+            element={
+              <RequirePermission permission="aggregate_summaries.create">
+                <CreateSummaryPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/aggregate-summaries/:id"
+            element={
+              <RequirePermission permission="aggregate_summaries.view">
+                <ViewSummaryPage />
+              </RequirePermission>
+            }
+          />
+
           {/* ⭐ Profile */}
           <Route path="/profile" element={<ProfilePage />} />
 
           {/* ⭐ Settings (محمي بالكامل) */}
-          <Route path="/settings" element={
-            <RequirePermission permission="settings.view">
-              <SettingsLayout />
-            </RequirePermission>
-          }>
+          <Route
+            path="/settings"
+            element={
+              <RequirePermission permission="settings.view">
+                <SettingsLayout />
+              </RequirePermission>
+            }
+          >
             <Route index element={<SettingsPage />} />
 
             {/* ⭐ Templates */}
-            <Route path="templates" element={
-              <RequirePermission permission="templates.view">
-                <TemplatesPage />
-              </RequirePermission>
-            } />
-            <Route path="templates/new" element={
-              <RequirePermission permission="templates.create">
-                <TemplateFormPage />
-              </RequirePermission>
-            } />
-            <Route path="templates/:id/edit" element={
-              <RequirePermission permission="templates.edit">
-                <TemplateFormPage />
-              </RequirePermission>
-            } />
-            <Route path="templates/:id/fields/new" element={
-              <RequirePermission permission="templates.manage">
-                <FieldFormPage />
-              </RequirePermission>
-            } />
-            <Route path="templates/:id/fields/:fieldId/edit" element={
-              <RequirePermission permission="templates.manage">
-                <FieldFormPage />
-              </RequirePermission>
-            } />
-            <Route path="templates/:id" element={
-              <RequirePermission permission="templates.view">
-                <TemplateDetailPage />
-              </RequirePermission>
-            } />
+            <Route
+              path="templates"
+              element={
+                <RequirePermission permission="templates.view">
+                  <TemplatesPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="templates/new"
+              element={
+                <RequirePermission permission="templates.create">
+                  <TemplateFormPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="templates/:id/edit"
+              element={
+                <RequirePermission permission="templates.edit">
+                  <TemplateFormPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="templates/:id/fields/new"
+              element={
+                <RequirePermission permission="templates.manage">
+                  <FieldFormPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="templates/:id/fields/:fieldId/edit"
+              element={
+                <RequirePermission permission="templates.manage">
+                  <FieldFormPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="templates/:id"
+              element={
+                <RequirePermission permission="templates.view">
+                  <TemplateDetailPage />
+                </RequirePermission>
+              }
+            />
+
+            {/* ⭐ Aggregate Summaries Settings */}
+            <Route
+              path="aggregate-summaries"
+              element={
+                <RequirePermission permission="aggregate_summaries.manage">
+                  <AggregateSummariesSettingsPage />
+                </RequirePermission>
+              }
+            />
 
             {/* ⭐ Notifications Admin */}
-            <Route path="notifications" element={
-              <RequirePermission permission="notifications.manage">
-                <NotificationsAdminPage />
-              </RequirePermission>
-            }>
+            <Route
+              path="notifications"
+              element={
+                <RequirePermission permission="notifications.manage">
+                  <NotificationsAdminPage />
+                </RequirePermission>
+              }
+            >
               <Route index element={<Navigate to="rules" replace />} />
               <Route path="rules" element={<NotificationRulesPage />} />
               <Route path="rules/new" element={<NotificationRuleFormPage />} />
@@ -258,85 +344,127 @@ function App() {
             </Route>
 
             {/* ⭐ Users */}
-            <Route path="users" element={
-              <RequirePermission permission="users.view">
-                <UsersListPage />
-              </RequirePermission>
-            } />
-            <Route path="users/new" element={
-              <RequirePermission permission="users.create">
-                <CreateUserPage />
-              </RequirePermission>
-            } />
-            <Route path="users/:id" element={
-              <RequirePermission permission="users.view">
-                <UserDetailPage />
-              </RequirePermission>
-            } />
+            <Route
+              path="users"
+              element={
+                <RequirePermission permission="users.view">
+                  <UsersListPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="users/new"
+              element={
+                <RequirePermission permission="users.create">
+                  <CreateUserPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="users/:id"
+              element={
+                <RequirePermission permission="users.view">
+                  <UserDetailPage />
+                </RequirePermission>
+              }
+            />
 
             {/* ⭐ Entities */}
-            <Route path="entities" element={
-              <RequirePermission permission="entities.view">
-                <EntitiesPage />
-              </RequirePermission>
-            } />
-            <Route path="entities/new" element={
-              <RequirePermission permission="entities.create">
-                <EntityFormPage />
-              </RequirePermission>
-            } />
-            <Route path="entities/:id/edit" element={
-              <RequirePermission permission="entities.edit">
-                <EntityFormPage />
-              </RequirePermission>
-            } />
-            <Route path="entities/:id" element={
-              <RequirePermission permission="entities.view">
-                <EntityDetailPage />
-              </RequirePermission>
-            } />
+            <Route
+              path="entities"
+              element={
+                <RequirePermission permission="entities.view">
+                  <EntitiesPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="entities/new"
+              element={
+                <RequirePermission permission="entities.create">
+                  <EntityFormPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="entities/:id/edit"
+              element={
+                <RequirePermission permission="entities.edit">
+                  <EntityFormPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="entities/:id"
+              element={
+                <RequirePermission permission="entities.view">
+                  <EntityDetailPage />
+                </RequirePermission>
+              }
+            />
 
             {/* ⭐ Permissions & Roles */}
-            <Route path="permissions" element={
-              <RequirePermission permission="permissions.manage">
-                <PermissionsDashboard />
-              </RequirePermission>
-            } />
-            <Route path="permissions/bulk-import" element={
-              <RequirePermission permission="bulk_import.execute">
-                <BulkImportPage />
-              </RequirePermission>
-            } />
-            <Route path="permissions/users/:id" element={
-              <RequirePermission permission="permissions.admin_override">
-                <UserPermissionsPage />
-              </RequirePermission>
-            } />
-            <Route path="roles" element={
-              <RequirePermission permission="roles.view">
-                <RolesPage />
-              </RequirePermission>
-            } />
+            <Route
+              path="permissions"
+              element={
+                <RequirePermission permission="permissions.manage">
+                  <PermissionsDashboard />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="permissions/bulk-import"
+              element={
+                <RequirePermission permission="bulk_import.execute">
+                  <BulkImportPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="permissions/users/:id"
+              element={
+                <RequirePermission permission="permissions.admin_override">
+                  <UserPermissionsPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="roles"
+              element={
+                <RequirePermission permission="roles.view">
+                  <RolesPage />
+                </RequirePermission>
+              }
+            />
 
             {/* ⭐ Themes */}
-            <Route path="themes" element={
-              <RequirePermission permission="themes.view">
-                <ThemesPage />
-              </RequirePermission>
-            } />
-            <Route path="themes/reset" element={
-              <RequirePermission permission="users.manage">
-                <ResetUserThemesPage />
-              </RequirePermission>
-            } />
+            <Route
+              path="themes"
+              element={
+                <RequirePermission permission="themes.view">
+                  <ThemesPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="themes/reset"
+              element={
+                <RequirePermission permission="users.manage">
+                  <ResetUserThemesPage />
+                </RequirePermission>
+              }
+            />
           </Route>
 
           <Route path="/admin/*" element={<AdminRedirect />} />
-          <Route path="/notifications" element={
-            <RequirePermission permission="notifications.view">
-              <NotificationsPage />
-            </RequirePermission>
-          } />
+          <Route
+            path="/notifications"
+            element={
+              <RequirePermission permission="notifications.view">
+                <NotificationsPage />
+              </RequirePermission>
+            }
+          />
         </Route>
 
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

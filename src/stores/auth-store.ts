@@ -21,7 +21,7 @@ interface AuthState {
   error: string | null;
 
   initialize: () => Promise<void>;
-  signIn: (identifier: string, password: string) => Promise<void>; // identifier: بريد أو اسم مستخدم
+  signIn: (identifier: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
   refreshUser: () => Promise<void>;
@@ -65,24 +65,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       set({ initialized: true, loading: false });
 
+      // ⭐ نستمع فقط للأحداث المهمة
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
-          console.log('🔄 Auth event:', event);
+          // لا نطبع الأحداث المتكررة
+          if (event !== 'SIGNED_IN' || !session?.user) {
+            return;
+          }
 
-          if (event === 'SIGNED_IN' && session?.user) {
-            const currentUser = get().user;
-            if (currentUser?.authUserId === session.user.id) {
-              return;
-            }
+          // حماية صارمة: تحقق من تطابق المستخدم
+          const currentUser = get().user;
+          if (currentUser?.authUserId === session.user.id) {
+            return; // نفس المستخدم — لا حاجة لإعادة التحميل
+          }
 
-            const user = await fetchUserProfile(session.user.id);
-            if (user) {
-              set({ session, user });
-            }
-          } else if (event === 'SIGNED_OUT') {
-            set({ session: null, user: null });
-          } else if (event === 'TOKEN_REFRESHED' && session) {
-            set({ session });
+          // مستخدم جديد — حمّل الملف
+          console.log('🔄 New user detected, fetching profile...');
+          const user = await fetchUserProfile(session.user.id);
+          if (user) {
+            set({ session, user });
           }
         }
       );
@@ -98,9 +99,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  /**
-   * تسجيل الدخول باستخدام البريد أو اسم المستخدم
-   */
   signIn: async (identifier, password) => {
     try {
       set({ loading: true, error: null });
@@ -114,7 +112,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error('حسابك غير مُفعّل — تواصل مع الدعم الفني');
       }
 
-      // تحديث آخر دخول
       await supabase
         .from('users')
         .update({ last_login_at: new Date().toISOString() })

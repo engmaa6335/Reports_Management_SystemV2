@@ -99,7 +99,6 @@ function getTemplateKind(
   return 'other';
 }
 
-// ⭐ استخراج اسم المعلم من بيانات التقرير
 function extractTeacherName(data: Record<string, unknown> | undefined): string {
   if (!data) return '—';
   const val = data.teacher_name;
@@ -138,11 +137,9 @@ export function ReportsListPage() {
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // ⭐ حالة الصلاحيات
   const [hasCreatePermission, setHasCreatePermission] = useState(false);
   const [checkingPermissions, setCheckingPermissions] = useState(true);
 
-  // ⭐ حالات التمرير الأفقي
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -152,17 +149,24 @@ export function ReportsListPage() {
   );
   const noTemplates = !templatesLoading && templates.length === 0;
 
-  // ⭐ جلب الصلاحيات باستخدام RPC + الاستماع المباشر (Realtime)
+  // ═══════════════════════════════════════════════════════════
+  // ⭐ Permission check + Realtime listener (StrictMode-safe)
+  // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     let subscription: any = null;
     let intervalId: any = null;
+    let isMounted = true;
 
     const checkPermission = async () => {
       if (!activeEntity?.roleCode) return;
-      
+
       try {
-        const { data, error } = await supabase.rpc('check_user_can_create_report');
-        
+        const { data, error } = await supabase.rpc(
+          'check_user_can_create_report'
+        );
+
+        if (!isMounted) return;
+
         if (error) {
           console.error('Error checking permission:', error);
           setHasCreatePermission(false);
@@ -170,10 +174,13 @@ export function ReportsListPage() {
           setHasCreatePermission(data === true);
         }
       } catch (err) {
+        if (!isMounted) return;
         console.error(err);
         setHasCreatePermission(false);
       } finally {
-        setCheckingPermissions(false);
+        if (isMounted) {
+          setCheckingPermissions(false);
+        }
       }
     };
 
@@ -181,38 +188,65 @@ export function ReportsListPage() {
       setCheckingPermissions(true);
       await checkPermission();
 
-      // 1. الاستماع لأي تغيير في جدول user_entity_roles
-      subscription = supabase
-        .channel('reports_permissions_listener')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'user_entity_roles' },
-          () => {
-            console.log('🔄 User roles changed, re-checking permission...');
-            checkPermission();
-          }
-        )
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'role_permissions' },
-          () => {
-            console.log('🔄 Role permissions changed, re-checking permission...');
-            checkPermission();
-          }
-        )
-        .subscribe();
+      if (!isMounted) return;
 
-      // 2. كخيار احتياطي (في حال لم يعمل Realtime لأي سبب)، نفحص كل 10 ثوانٍ
-      intervalId = setInterval(checkPermission, 10000);
+      // ⭐ اسم قناة فريد لتجنب تعارض StrictMode
+      const channelName = `reports_permissions_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 9)}`;
+
+      try {
+        subscription = supabase
+          .channel(channelName)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'user_entity_roles' },
+            () => {
+              if (isMounted) {
+                console.log('🔄 User roles changed, re-checking permission...');
+                checkPermission();
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'role_permissions' },
+            () => {
+              if (isMounted) {
+                console.log('🔄 Role permissions changed, re-checking permission...');
+                checkPermission();
+              }
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn('⚠️ Realtime subscription failed:', err);
+      }
+
+      // خيار احتياطي: فحص كل 10 ثوانٍ
+      if (isMounted) {
+        intervalId = setInterval(checkPermission, 10000);
+      }
     };
 
     init();
 
     return () => {
-      if (subscription) supabase.removeChannel(subscription);
+      isMounted = false;
+      if (subscription) {
+        try {
+          supabase.removeChannel(subscription);
+        } catch (err) {
+          // تجاهل — قد تكون القناة أُزيلت بالفعل
+        }
+      }
       if (intervalId) clearInterval(intervalId);
     };
   }, [activeEntity?.roleCode, activeEntity?.entityId, user?.id]);
+
+  // ═══════════════════════════════════════════════════════════
+  // Load data
+  // ═══════════════════════════════════════════════════════════
 
   useEffect(() => {
     if (user && activeEntity) {
@@ -226,7 +260,10 @@ export function ReportsListPage() {
     }
   }, [activeEntity?.roleCode, activeEntity?.entityId, loadAvailableTemplates]);
 
-  // ⭐ تحديد اسم العمود ديناميكياً حسب نوع الكيان
+  // ═══════════════════════════════════════════════════════════
+  // Derived data
+  // ═══════════════════════════════════════════════════════════
+
   const entityColumnLabel = useMemo(() => {
     const role = activeEntity?.roleCode;
     if (role === 'tls_manager') {
@@ -235,11 +272,17 @@ export function ReportsListPage() {
     if (role === 'school_manager') {
       return i18n.language === 'ar' ? 'المدرسة' : 'School';
     }
-    
-    if (activeEntity?.regionModes?.includes('tls') && !activeEntity?.regionModes?.includes('rl')) {
+
+    if (
+      activeEntity?.regionModes?.includes('tls') &&
+      !activeEntity?.regionModes?.includes('rl')
+    ) {
       return i18n.language === 'ar' ? 'المركز' : 'Center';
     }
-    if (activeEntity?.regionModes?.includes('rl') && !activeEntity?.regionModes?.includes('tls')) {
+    if (
+      activeEntity?.regionModes?.includes('rl') &&
+      !activeEntity?.regionModes?.includes('tls')
+    ) {
       return i18n.language === 'ar' ? 'المدرسة' : 'School';
     }
 
@@ -321,7 +364,10 @@ export function ReportsListPage() {
     return `📝 ${t('reports_page.reports')}`;
   }, [activeEntity, t]);
 
-  // ⭐ دالة فحص التمرير
+  // ═══════════════════════════════════════════════════════════
+  // Scroll handling
+  // ═══════════════════════════════════════════════════════════
+
   const checkScroll = () => {
     const el = tableScrollRef.current;
     if (!el) return;
@@ -337,7 +383,6 @@ export function ReportsListPage() {
     const scrolledFromStart = currentScroll > 2;
     const scrolledFromEnd = currentScroll < maxScroll - 2;
 
-    // في RTL نعكس المنطق
     setCanScrollLeft(scrolledFromEnd);
     setCanScrollRight(scrolledFromStart);
   };
@@ -372,6 +417,10 @@ export function ReportsListPage() {
     el.scrollTo({ left: -newPos, behavior: 'smooth' });
   };
 
+  // ═══════════════════════════════════════════════════════════
+  // Render
+  // ═══════════════════════════════════════════════════════════
+
   if (loading && reports.length === 0) {
     return <Loading message={t('reports_page.loading_reports')} />;
   }
@@ -393,7 +442,6 @@ export function ReportsListPage() {
           </p>
         </div>
 
-        {/* ⭐ الزر يعتمد على الصلاحية الآن */}
         {!checkingPermissions && hasCreatePermission && (
           <Button
             variant="primary"
@@ -635,10 +683,9 @@ export function ReportsListPage() {
         </Card>
       )}
 
-      {/* ⭐ Reports Table — Sticky Header + Horizontal Scroll Arrows */}
+      {/* Reports Table */}
       {filteredReports.length > 0 && (
         <Card padding="none" className="relative">
-          {/* ⭐ أزرار التمرير الأفقي — ثابتة فوق الجدول */}
           {canScrollRight && (
             <button
               onClick={scrollTableRight}
@@ -704,12 +751,16 @@ export function ReportsListPage() {
                           </div>
                           <div className="min-w-0">
                             <div className="font-medium text-text truncate">
-                              {report.template?.name_ar || t('reports_page.table_report')}
+                              {report.template?.name_ar ||
+                                t('reports_page.table_report')}
                             </div>
                             <div className="text-xs text-text-muted truncate">
                               {getPeriodLabel(report.period_type, t)}
                               {report.period_start &&
-                                ` — ${formatDate(report.period_start, i18n.language)}`}
+                                ` — ${formatDate(
+                                  report.period_start,
+                                  i18n.language
+                                )}`}
                             </div>
                           </div>
                         </div>
@@ -718,7 +769,10 @@ export function ReportsListPage() {
                       <td className="px-4 py-4 hidden md:table-cell">
                         <div className="flex items-center gap-2 text-sm text-text">
                           <Building2 className="w-4 h-4 text-text-muted flex-shrink-0" />
-                          <span className="truncate max-w-[200px]" title={report.entity?.name_ar}>
+                          <span
+                            className="truncate max-w-[200px]"
+                            title={report.entity?.name_ar}
+                          >
                             {report.entity?.name_ar || '—'}
                           </span>
                         </div>
@@ -727,7 +781,10 @@ export function ReportsListPage() {
                       <td className="px-4 py-4 hidden md:table-cell">
                         <div className="flex items-center gap-2 text-sm text-text">
                           <GraduationCap className="w-4 h-4 text-text-muted flex-shrink-0" />
-                          <span className="truncate max-w-[150px]" title={teacherName}>
+                          <span
+                            className="truncate max-w-[150px]"
+                            title={teacherName}
+                          >
                             {teacherName}
                           </span>
                         </div>

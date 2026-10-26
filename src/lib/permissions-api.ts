@@ -47,6 +47,34 @@ export interface EntitySuggestion {
   requires_confirmation: boolean;
 }
 
+export interface PageWithPermissions {
+  code: string;
+  name_ar: string;
+  name_en: string | null;
+  module: string;
+  icon: string | null;
+  order_index: number;
+  supported_permissions: string[];
+  permission_resource: string | null;
+  permissions: Array<{
+    id: string;
+    code: string;
+    action: string;
+    name_ar: string;
+    qualifier: string | null;
+  }>;
+}
+
+export interface OrphanPermission {
+  id: string;
+  code: string;
+  resource: string;
+  action: string;
+  name_ar: string;
+  category: string;
+  qualifier: string | null;
+}
+
 // ═══════════════════════════════════════════════════════════
 // RPC Calls
 // ═══════════════════════════════════════════════════════════
@@ -178,4 +206,91 @@ export async function getActiveRoles() {
 
   if (error) throw new Error(error.message);
   return data || [];
+}
+
+// ═══════════════════════════════════════════════════════════
+// Pages + Permissions (for dynamic RolesPage)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Returns all active pages + their permissions grouped by permission_resource.
+ * Each page shows the permissions whose `resource` matches its `permission_resource`.
+ */
+export async function getPagesWithPermissions(): Promise<PageWithPermissions[]> {
+  // 1. Fetch all active pages
+  const { data: pages, error: pagesError } = await supabase
+    .from('pages')
+    .select('code, name_ar, name_en, module, icon, order_index, supported_permissions, permission_resource')
+    .eq('is_active', true)
+    .order('order_index');
+
+  if (pagesError) throw new Error(pagesError.message);
+
+  // 2. Fetch all permissions
+  const { data: permissions, error: permsError } = await supabase
+    .from('permissions')
+    .select('id, code, resource, action, name_ar, qualifier, category')
+    .order('action');
+
+  if (permsError) throw new Error(permsError.message);
+
+  // 3. Group permissions by resource
+  const permsByResource = new Map<string, typeof permissions>();
+  for (const perm of permissions || []) {
+    const list = permsByResource.get(perm.resource) || [];
+    list.push(perm);
+    permsByResource.set(perm.resource, list);
+  }
+
+  // 4. Build result — match via permission_resource
+  const result: PageWithPermissions[] = (pages || []).map((page: any) => {
+    const resource = page.permission_resource as string | null;
+    const pagePerms = resource ? (permsByResource.get(resource) || []) : [];
+
+    return {
+      code: page.code,
+      name_ar: page.name_ar,
+      name_en: page.name_en,
+      module: page.module,
+      icon: page.icon,
+      order_index: page.order_index,
+      supported_permissions: page.supported_permissions || [],
+      permission_resource: resource,
+      permissions: pagePerms.map((p: any) => ({
+        id: p.id,
+        code: p.code,
+        action: p.action,
+        name_ar: p.name_ar || p.action,
+        qualifier: p.qualifier,
+      })),
+    };
+  });
+
+  return result;
+}
+
+/**
+ * Returns orphan permissions (not linked to any page).
+ * E.g.: reports.create.rl_specialist, reports.create.tls_specialist,
+ *       aggregates.create.qa_chief_rl, etc.
+ */
+export async function getOrphanPermissions(
+  linkedResources: string[]
+): Promise<OrphanPermission[]> {
+  const { data, error } = await supabase
+    .from('permissions')
+    .select('id, code, resource, action, name_ar, category, qualifier')
+    .order('category')
+    .order('resource')
+    .order('action');
+
+  if (error) throw new Error(error.message);
+
+  // Filter client-side to exclude resources linked to a page
+  const linkedSet = new Set(linkedResources);
+  const orphans = (data || []).filter(
+    (p: any) => !linkedSet.has(p.resource)
+  );
+
+  return orphans as OrphanPermission[];
 }
