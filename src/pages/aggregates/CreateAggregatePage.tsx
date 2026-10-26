@@ -22,10 +22,11 @@ import { useAggregatesStore } from '../../stores/aggregates-store';
 import { Button, Card, Loading } from '../../components/ui';
 import { VisitsTable } from '../../components/aggregates/VisitsTable';
 import { ManualActivitiesTable } from '../../components/aggregates/ManualActivitiesTable';
+import { pickLocalizedName } from '../../lib/i18n-helpers';
 import type { PeriodType, ManualActivityRow } from '../../types/aggregates';
 
 // ═══════════════════════════════════════════════════════════
-// CreateAggregatePage — الصفحة الفعلية
+// CreateAggregatePage
 // ═══════════════════════════════════════════════════════════
 
 export function CreateAggregatePage() {
@@ -85,7 +86,7 @@ export function CreateAggregatePage() {
   ]);
 
   // ═══════════════════════════════════════════
-  // Auto-calculate period when type/custom dates change
+  // Auto-calculate period
   // ═══════════════════════════════════════════
 
   useEffect(() => {
@@ -119,7 +120,6 @@ export function CreateAggregatePage() {
     }
   };
 
-  // ⭐ زر "إنشاء التقرير" — يجلب الزيارات
   const handleCreateReport = async () => {
     if (!user?.id || !activeEntity?.entityId) return;
 
@@ -128,7 +128,6 @@ export function CreateAggregatePage() {
       entityId: activeEntity.entityId,
     });
 
-    // إذا الفترة مكتملة ولم يوجد تقرير سابق → انتقل لملء التقرير
     const state = useAggregatesStore.getState();
     if (
       state.calculatedPeriod?.isComplete &&
@@ -139,7 +138,6 @@ export function CreateAggregatePage() {
     }
   };
 
-  // ⭐ زر "حفظ التقرير"
   const handleSave = async () => {
     if (!user?.id || !activeEntity?.entityId) return;
 
@@ -155,7 +153,6 @@ export function CreateAggregatePage() {
     }
   };
 
-  // ⭐ فتح التقرير الموجود
   const handleOpenExisting = () => {
     if (existingAggregate) {
       navigate(`/aggregates/${existingAggregate.id}`);
@@ -177,7 +174,6 @@ export function CreateAggregatePage() {
   if (step === 'select') {
     return (
       <div className="space-y-6" dir="rtl">
-        {/* Header */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/aggregates')}
@@ -195,7 +191,6 @@ export function CreateAggregatePage() {
           </div>
         </div>
 
-        {/* Empty */}
         {availableTemplates.length === 0 ? (
           <Card padding="lg">
             <div className="py-12 text-center">
@@ -235,7 +230,7 @@ export function CreateAggregatePage() {
                     </div>
 
                     <h3 className="mb-2 text-lg font-bold text-text">
-                      {template.name_ar}
+                      {pickLocalizedName(template, i18n.language)}
                     </h3>
 
                     {template.description && (
@@ -252,7 +247,9 @@ export function CreateAggregatePage() {
                             : 'bg-success/10 text-success'
                         }`}
                       >
-                        {reportType === 'RL' ? t('aggregates_page.report_type_rl') : t('aggregates_page.report_type_tls')}
+                        {reportType === 'RL'
+                          ? t('aggregates_page.report_type_rl')
+                          : t('aggregates_page.report_type_tls')}
                       </span>
                       <span className="text-text-muted">
                         {calcs?.entity_label}
@@ -273,10 +270,6 @@ export function CreateAggregatePage() {
     );
   }
 
-  // ═══════════════════════════════════════════
-  // Guard
-  // ═══════════════════════════════════════════
-
   if (!selectedTemplate) {
     return <Loading message={t('aggregate_form.preparing')} />;
   }
@@ -284,6 +277,7 @@ export function CreateAggregatePage() {
   const calcs = selectedTemplate.calculations;
   const reportType = calcs?.report_type || 'RL';
   const entityLabel = calcs?.entity_label || 'الجهة';
+  const templateDisplayName = pickLocalizedName(selectedTemplate, i18n.language);
 
   // ═══════════════════════════════════════════
   // Render — Step 2: Period Selection
@@ -295,7 +289,6 @@ export function CreateAggregatePage() {
 
     return (
       <div className="space-y-6" dir="rtl">
-        {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
@@ -306,7 +299,7 @@ export function CreateAggregatePage() {
             </button>
             <div>
               <h1 className="text-2xl font-bold text-text">
-                {selectedTemplate.name_ar}
+                {templateDisplayName}
               </h1>
               <p className="mt-1 text-sm text-text-secondary">
                 {t('aggregate_form.period_title')}
@@ -330,7 +323,6 @@ export function CreateAggregatePage() {
           </div>
         </div>
 
-        {/* Error */}
         {error && (
           <Card padding="md" className="border-danger bg-danger/5">
             <div className="flex items-start gap-2 text-sm text-danger">
@@ -340,14 +332,12 @@ export function CreateAggregatePage() {
           </Card>
         )}
 
-        {/* Period Selection */}
         <Card padding="lg">
           <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
             <Calendar className="h-5 w-5 text-primary" />
             {t('aggregate_form.period_title')}
           </h3>
 
-          {/* Period Type */}
           <div className="mb-4">
             <label className="mb-2 block text-sm font-medium text-text">
               {t('aggregate_form.period_type')}
@@ -379,7 +369,6 @@ export function CreateAggregatePage() {
             </div>
           </div>
 
-          {/* Custom Dates */}
           {periodType === 'custom' && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
@@ -411,7 +400,6 @@ export function CreateAggregatePage() {
             </div>
           )}
 
-          {/* Period Result */}
           {calculatedPeriod && (
             <div
               className={`mt-4 rounded-lg border p-4 ${
@@ -432,7 +420,10 @@ export function CreateAggregatePage() {
                   </p>
                   <p className="text-sm text-text-secondary">
                     {periodComplete
-                      ? t('aggregate_form.period_from_to', { start: calculatedPeriod.start, end: calculatedPeriod.end })
+                      ? t('aggregate_form.period_from_to', {
+                          start: calculatedPeriod.start,
+                          end: calculatedPeriod.end,
+                        })
                       : calculatedPeriod.label}
                   </p>
                 </div>
@@ -441,7 +432,6 @@ export function CreateAggregatePage() {
           )}
         </Card>
 
-        {/* ⭐ Existing Aggregate Warning */}
         {existingAggregate && (
           <Card padding="lg" className="border-warning/30 bg-warning/5">
             <div className="flex items-start gap-3">
@@ -452,10 +442,12 @@ export function CreateAggregatePage() {
                 </h3>
                 <p className="mb-4 text-sm text-text-secondary">
                   {t('aggregate_form.existing_desc', {
-                    date: new Date(existingAggregate.created_at).toLocaleDateString(
+                    date: new Date(
+                      existingAggregate.created_at
+                    ).toLocaleDateString(
                       i18n.language === 'ar' ? 'ar-EG' : 'en-US',
                       { day: 'numeric', month: 'long', year: 'numeric' }
-                    )
+                    ),
                   })}
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -478,7 +470,6 @@ export function CreateAggregatePage() {
           </Card>
         )}
 
-        {/* Info Box */}
         <Card padding="md" className="bg-bg-secondary">
           <div className="flex items-start gap-2 text-sm">
             <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
@@ -497,7 +488,6 @@ export function CreateAggregatePage() {
 
   return (
     <div className="space-y-6" dir="rtl">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
@@ -508,7 +498,7 @@ export function CreateAggregatePage() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-text">
-              {selectedTemplate.name_ar}
+              {templateDisplayName}
             </h1>
             <p className="mt-1 text-sm text-text-secondary">
               {t('aggregate_form.edit_subtitle')}
@@ -532,7 +522,6 @@ export function CreateAggregatePage() {
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <Card padding="md" className="border-danger bg-danger/5">
           <div className="flex items-start gap-2 text-sm text-danger">
@@ -542,7 +531,6 @@ export function CreateAggregatePage() {
         </Card>
       )}
 
-      {/* Success Info */}
       {visitsFetched && (
         <Card padding="md" className="border-success/30 bg-success/5">
           <div className="flex items-center gap-2 text-sm text-success">
@@ -554,27 +542,32 @@ export function CreateAggregatePage() {
         </Card>
       )}
 
-      {/* Period Summary */}
       {calculatedPeriod && (
         <Card padding="md" className="bg-bg-secondary">
           <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-3">
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-text-muted" />
-              <span className="text-text-secondary">{t('aggregate_form.period_title')}:</span>
+              <span className="text-text-secondary">
+                {t('aggregate_form.period_title')}:
+              </span>
               <span className="font-medium text-text">
                 {calculatedPeriod.start} → {calculatedPeriod.end}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <UserIcon className="h-4 w-4 text-text-muted" />
-              <span className="text-text-secondary">{t('aggregate_form.specialist')}</span>
+              <span className="text-text-secondary">
+                {t('aggregate_form.specialist')}
+              </span>
               <span className="font-medium text-text">
                 {user?.fullName || '—'}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <Building2 className="h-4 w-4 text-text-muted" />
-              <span className="text-text-secondary">{t('aggregate_form.region')}</span>
+              <span className="text-text-secondary">
+                {t('aggregate_form.region')}
+              </span>
               <span className="font-medium text-text">
                 {activeEntity?.entityName || '—'}
               </span>
@@ -583,7 +576,6 @@ export function CreateAggregatePage() {
         </Card>
       )}
 
-      {/* ═══ Visits Table ═══ */}
       <Card padding="lg">
         <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
           <FileText className="h-5 w-5 text-info" />
@@ -597,7 +589,6 @@ export function CreateAggregatePage() {
         />
       </Card>
 
-      {/* ═══ Manual Activities ═══ */}
       <Card padding="lg">
         <h3 className="mb-4 flex items-center gap-2 text-lg font-semibold text-text">
           <Sparkles className="h-5 w-5 text-warning" />
@@ -612,7 +603,6 @@ export function CreateAggregatePage() {
         />
       </Card>
 
-      {/* Bottom Actions */}
       <div className="flex items-center justify-end gap-3 pt-2">
         <Button variant="ghost" onClick={() => navigate('/aggregates')}>
           {t('common.cancel')}

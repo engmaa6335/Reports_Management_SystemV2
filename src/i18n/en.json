@@ -202,7 +202,9 @@
     "report_type_tls": "TLS Visits",
     "report_type_generic": "Report",
     "aggregate_report": "Aggregate Report",
-    "close": "Close"
+    "close": "Close",
+    "total_aggregates": "Total Aggregate Reports",
+    "this_month": "Last 30 Days"
   },
   "report_form": {
     "create_title": "Create New Report",
@@ -457,6 +459,8 @@
     "not_found": "Summary not found",
     "not_found_desc": "The summary may be deleted or unavailable",
     "source_changed_warning": "⚠️ Some source reports were modified after this summary was created. Review content before approval.",
+    "total_summaries": "Total Summaries",
+    "this_month": "Last 30 Days",
     "settings": {
       "title": "Summaries Settings",
       "subtitle": "Manage aggregate report summaries system settings",

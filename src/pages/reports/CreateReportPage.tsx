@@ -12,6 +12,7 @@ import { Loading } from '../../components/ui/Loading';
 import { DynamicField } from '../../components/reports/DynamicField';
 import { FormSection } from '../../components/reports/FormSection';
 import { supabase } from '../../lib/supabase';
+import { pickLocalizedName } from '../../lib/i18n-helpers';
 
 // ================================================
 // Helpers
@@ -93,7 +94,7 @@ function extractSections(fields: any[]): SectionData[] {
 // ================================================
 
 export function CreateReportPage() {
-  const { t } = useTranslation();
+ const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { templateId: urlTemplateId } = useParams<{ templateId?: string }>();
   const { user } = useAuthStore();
@@ -524,7 +525,7 @@ export function CreateReportPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-text">
-              ➕ {t('report_form.create_title')}
+               {pickLocalizedName(selectedTemplate, i18n.language)}
             </h1>
             <p className="text-text-secondary mt-1">
               {t('report_form.create_subtitle')}
@@ -583,12 +584,14 @@ export function CreateReportPage() {
                     </div>
 
                     <h3 className="text-lg font-bold text-text mb-2">
-                      {template.name_ar}
+                      {pickLocalizedName(template, i18n.language)}
                     </h3>
 
                     {template.description && (
                       <p className="text-sm text-text-secondary mb-4">
-                        {template.description}
+                        {i18n.language === 'en' && (template as any).description_en
+                          ? (template as any).description_en
+                          : template.description}
                       </p>
                     )}
 

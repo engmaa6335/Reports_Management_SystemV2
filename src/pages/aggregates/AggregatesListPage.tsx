@@ -8,14 +8,19 @@ import {
   Calendar,
   MapPin,
   ChevronDown,
+  BarChart3,
+  CheckCircle2,
+  Archive,
+  Clock,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore } from '../../stores/entity-store';
 import { useAggregatesStore } from '../../stores/aggregates-store';
 import { DeleteAggregateModal } from '../../components/aggregates/DeleteAggregateModal';
 import { Button, Card } from '../../components/ui';
-import { usePermission } from '../../hooks/usePermission'; // ⭐ إضافة الاستيراد
-import type { PeriodType, ReportType } from '../../types/aggregates';
+import { usePermission } from '../../hooks/usePermission';
+import { pickLocalizedName } from '../../lib/i18n-helpers';
+import type { PeriodType } from '../../types/aggregates';
 
 type QuickTab = 'all' | 'RL' | 'TLS';
 
@@ -33,14 +38,54 @@ const DEFAULT_ADVANCED: AdvancedFilters = {
   regionId: null,
 };
 
+// ═══════════════════════════════════════════════════════════
+// StatCard Component
+// ═══════════════════════════════════════════════════════════
+
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  color: 'primary' | 'info' | 'success' | 'warning';
+}
+
+function StatCard({ icon, label, value, color }: StatCardProps) {
+  const colorClasses: Record<string, string> = {
+    primary: 'bg-primary/10 text-primary',
+    info: 'bg-info/10 text-info',
+    success: 'bg-success/10 text-success',
+    warning: 'bg-warning/10 text-warning',
+  };
+
+  return (
+    <Card padding="md">
+      <div className="flex items-center gap-4">
+        <div
+          className={`w-12 h-12 rounded-xl flex items-center justify-center ${colorClasses[color]}`}
+        >
+          {icon}
+        </div>
+        <div>
+          <div className="text-2xl font-bold text-text">{value}</div>
+          <div className="text-sm text-text-secondary">{label}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Main Component
+// ═══════════════════════════════════════════════════════════
+
 export function AggregatesListPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { activeEntity } = useEntityStore();
 
-  // ⭐ استخدام الـ Hook للتحقق من الصلاحية
-  const { allowed: canCreateAggregate, loading: checkingAggPerms } = usePermission('aggregates.create');
+  const { allowed: canCreateAggregate, loading: checkingAggPerms } =
+    usePermission('aggregates.create');
 
   const {
     aggregates,
@@ -77,6 +122,10 @@ export function AggregatesListPage() {
     return () => clearError();
   }, [clearError]);
 
+  // ═══════════════════════════════════════════
+  // Filtered aggregates
+  // ═══════════════════════════════════════════
+
   const filteredAggregates = useMemo(() => {
     let result = [...aggregates];
 
@@ -90,7 +139,7 @@ export function AggregatesListPage() {
     if (search.trim()) {
       const s = search.toLowerCase().trim();
       result = result.filter((a) => {
-        const templateName = a.aggregate_template?.name_ar?.toLowerCase() || '';
+        const templateName = pickLocalizedName(a.aggregate_template, i18n.language).toLowerCase();
         const entityName = a.entity?.name_ar?.toLowerCase() || '';
         const creatorName = a.creator?.full_name?.toLowerCase() || '';
         return (
@@ -122,7 +171,11 @@ export function AggregatesListPage() {
     }
 
     return result;
-  }, [aggregates, quickTab, search, advanced]);
+  }, [aggregates, quickTab, search, advanced, i18n.language]);
+
+  // ═══════════════════════════════════════════
+  // Counts (for tabs)
+  // ═══════════════════════════════════════════
 
   const counts = useMemo(() => {
     const rl = aggregates.filter((a) => {
@@ -141,6 +194,29 @@ export function AggregatesListPage() {
       tls,
     };
   }, [aggregates]);
+
+  // ═══════════════════════════════════════════
+  // ⭐ Stats Cards
+  // ═══════════════════════════════════════════
+
+  const stats = useMemo(() => {
+    const total = aggregates.length;
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thisMonth = aggregates.filter(
+      (a) => new Date(a.created_at) >= thirtyDaysAgo
+    ).length;
+
+    const active = aggregates.filter((a) => a.status === 'active').length;
+    const archived = aggregates.filter((a) => a.status === 'archived').length;
+
+    return { total, thisMonth, active, archived };
+  }, [aggregates]);
+
+  // ═══════════════════════════════════════════
+  // Available regions
+  // ═══════════════════════════════════════════
 
   const availableRegions = useMemo(() => {
     const map = new Map<string, string>();
@@ -162,9 +238,7 @@ export function AggregatesListPage() {
   }, [advanced]);
 
   const hasAnyFilter =
-    quickTab !== 'all' ||
-    search.trim() !== '' ||
-    activeFiltersCount > 0;
+    quickTab !== 'all' || search.trim() !== '' || activeFiltersCount > 0;
 
   const clearAllFilters = () => {
     setQuickTab('all');
@@ -205,6 +279,10 @@ export function AggregatesListPage() {
     }
   };
 
+  // ═══════════════════════════════════════════
+  // Render
+  // ═══════════════════════════════════════════
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -218,7 +296,6 @@ export function AggregatesListPage() {
           </p>
         </div>
 
-        {/* ⭐ الزر يعتمد على الصلاحية الآن */}
         {!checkingAggPerms && canCreateAggregate && (
           <Button
             variant="primary"
@@ -228,6 +305,38 @@ export function AggregatesListPage() {
             {t('aggregates_page.create_aggregate')}
           </Button>
         )}
+      </div>
+
+      {/* ⭐ Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          icon={<BarChart3 className="w-5 h-5" />}
+          label={t('aggregates_page.total_aggregates', {
+            defaultValue: 'إجمالي التقارير التجميعية',
+          })}
+          value={stats.total}
+          color="primary"
+        />
+        <StatCard
+          icon={<Clock className="w-5 h-5" />}
+          label={t('aggregates_page.this_month', {
+            defaultValue: 'آخر 30 يوماً',
+          })}
+          value={stats.thisMonth}
+          color="info"
+        />
+        <StatCard
+          icon={<CheckCircle2 className="w-5 h-5" />}
+          label={t('aggregates_page.status_active')}
+          value={stats.active}
+          color="success"
+        />
+        <StatCard
+          icon={<Archive className="w-5 h-5" />}
+          label={t('aggregates_page.status_archived')}
+          value={stats.archived}
+          color="warning"
+        />
       </div>
 
       {/* Error */}
@@ -449,7 +558,6 @@ export function AggregatesListPage() {
             <p className="mb-6 text-sm text-text-secondary">
               {t('aggregates_page.no_aggregates_desc')}
             </p>
-            {/* ⭐ الزر يعتمد على الصلاحية */}
             {canCreateAggregate && (
               <Button
                 variant="primary"
@@ -490,6 +598,9 @@ export function AggregatesListPage() {
           {filteredAggregates.map((aggregate) => {
             const calcs = aggregate.aggregate_template?.calculations as any;
             const reportType = calcs?.report_type;
+            const templateName = aggregate.aggregate_template
+              ? pickLocalizedName(aggregate.aggregate_template, i18n.language)
+              : t('aggregates_page.aggregate_report');
 
             return (
               <Card
@@ -500,8 +611,7 @@ export function AggregatesListPage() {
                 <div className="mb-3 flex items-start justify-between">
                   <div className="flex-1">
                     <h3 className="font-semibold text-text">
-                      {aggregate.aggregate_template?.name_ar ||
-                        t('aggregates_page.aggregate_report')}
+                      {templateName}
                     </h3>
                     <p className="mt-0.5 text-xs font-medium text-info">
                       📍 {aggregate.entity?.name_ar || '—'}
@@ -595,9 +705,7 @@ export function AggregatesListPage() {
                       onClick={() =>
                         setDeleteTarget({
                           id: aggregate.id,
-                          title:
-                            aggregate.aggregate_template?.name_ar ||
-                            t('aggregates_page.aggregate_report'),
+                          title: templateName,
                           type: getReportTypeLabel(reportType),
                           creatorName:
                             aggregate.creator?.full_name || '—',
@@ -635,6 +743,10 @@ export function AggregatesListPage() {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// QuickTabButton
+// ═══════════════════════════════════════════════════════════
+
 interface QuickTabButtonProps {
   active: boolean;
   onClick: () => void;
@@ -642,12 +754,7 @@ interface QuickTabButtonProps {
   count: number;
 }
 
-function QuickTabButton({
-  active,
-  onClick,
-  label,
-  count,
-}: QuickTabButtonProps) {
+function QuickTabButton({ active, onClick, label, count }: QuickTabButtonProps) {
   return (
     <button
       onClick={onClick}

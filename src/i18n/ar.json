@@ -202,7 +202,9 @@
     "report_type_tls": "زيارات TLS",
     "report_type_generic": "تقرير",
     "aggregate_report": "تقرير تجميعي",
-    "close": "إغلاق"
+    "close": "إغلاق",
+    "total_aggregates": "إجمالي التقارير التجميعية",
+    "this_month": "آخر 30 يوماً"
   },
   "report_form": {
     "create_title": "إنشاء تقرير جديد",
@@ -457,6 +459,8 @@
     "not_found": "الملخص غير موجود",
     "not_found_desc": "قد يكون الملخص محذوفاً أو غير متاح",
     "source_changed_warning": "⚠️ تم تعديل بعض التقارير المصدرية بعد إنشاء هذا الملخص. راجع المحتوى قبل الاعتماد.",
+    "total_summaries": "إجمالي الملخصات",
+    "this_month": "آخر 30 يوماً",
     "settings": {
       "title": "إعدادات الملخصات",
       "subtitle": "إدارة إعدادات منظومة ملخصات التقارير التجميعية",

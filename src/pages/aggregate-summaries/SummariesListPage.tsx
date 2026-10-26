@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
   Search,
   Filter,
@@ -18,6 +19,8 @@ import {
   MapPin,
   Sparkles,
   AlertCircle,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import { useSummariesStore } from '../../stores/summaries-store';
 import { usePermission } from '../../hooks/usePermission';
@@ -60,7 +63,43 @@ const DEFAULT_ADVANCED: AdvancedFilters = {
 };
 
 // ═══════════════════════════════════════════════════════════
-// Component
+// StatCard
+// ═══════════════════════════════════════════════════════════
+
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  color: 'primary' | 'info' | 'success' | 'warning';
+}
+
+function StatCard({ icon, label, value, color }: StatCardProps) {
+  const colorClasses: Record<string, string> = {
+    primary: 'bg-primary/10 text-primary',
+    info: 'bg-info/10 text-info',
+    success: 'bg-success/10 text-success',
+    warning: 'bg-warning/10 text-warning',
+  };
+
+  return (
+    <Card padding="md">
+      <div className="flex items-center gap-4">
+        <div
+          className={`w-12 h-12 rounded-xl flex items-center justify-center ${colorClasses[color]}`}
+        >
+          {icon}
+        </div>
+        <div>
+          <div className="text-2xl font-bold text-text">{value}</div>
+          <div className="text-sm text-text-secondary">{label}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// Main Component
 // ═══════════════════════════════════════════════════════════
 
 export function SummariesListPage() {
@@ -107,6 +146,10 @@ export function SummariesListPage() {
     }
     return () => clearError();
   }, [canView, loadSummaries, loadTemplates, clearError]);
+
+  // ═══════════════════════════════════════════
+  // Filtered summaries
+  // ═══════════════════════════════════════════
 
   const filteredSummaries = useMemo(() => {
     let result = [...summaries];
@@ -159,6 +202,10 @@ export function SummariesListPage() {
     return result;
   }, [summaries, quickTab, search, advanced]);
 
+  // ═══════════════════════════════════════════
+  // Counts (for tabs)
+  // ═══════════════════════════════════════════
+
   const counts = useMemo(() => {
     const counts: Record<QuickTab, number> = {
       all: summaries.length,
@@ -174,6 +221,31 @@ export function SummariesListPage() {
     }
     return counts;
   }, [summaries]);
+
+  // ═══════════════════════════════════════════
+  // ⭐ Stats Cards
+  // ═══════════════════════════════════════════
+
+  const stats = useMemo(() => {
+    const total = summaries.length;
+
+    // آخر 30 يوماً
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thisMonth = summaries.filter(
+      (s) => new Date(s.created_at) >= thirtyDaysAgo
+    ).length;
+
+    // حسب الحالة
+    const draft = summaries.filter((s) => s.status === 'draft').length;
+    const approved = summaries.filter((s) => s.status === 'approved').length;
+
+    return { total, thisMonth, draft, approved };
+  }, [summaries]);
+
+  // ═══════════════════════════════════════════
+  // Options
+  // ═══════════════════════════════════════════
 
   const templateOptions = useMemo(
     () =>
@@ -214,9 +286,7 @@ export function SummariesListPage() {
   }, [advanced]);
 
   const hasAnyFilter =
-    quickTab !== 'all' ||
-    search.trim() !== '' ||
-    activeAdvancedCount > 0;
+    quickTab !== 'all' || search.trim() !== '' || activeAdvancedCount > 0;
 
   const clearAllFilters = () => {
     setQuickTab('all');
@@ -278,6 +348,38 @@ export function SummariesListPage() {
             {t('aggregate_summaries.create_summary')}
           </Button>
         )}
+      </div>
+
+      {/* ⭐ Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          icon={<Sparkles className="w-5 h-5" />}
+          label={t('aggregate_summaries.total_summaries', {
+            defaultValue: 'إجمالي الملخصات',
+          })}
+          value={stats.total}
+          color="primary"
+        />
+        <StatCard
+          icon={<Clock className="w-5 h-5" />}
+          label={t('aggregate_summaries.this_month', {
+            defaultValue: 'آخر 30 يوماً',
+          })}
+          value={stats.thisMonth}
+          color="info"
+        />
+        <StatCard
+          icon={<Edit2 className="w-5 h-5" />}
+          label={getSummaryStatusLabel(t, 'draft')}
+          value={stats.draft}
+          color="warning"
+        />
+        <StatCard
+          icon={<CheckCircle2 className="w-5 h-5" />}
+          label={getSummaryStatusLabel(t, 'approved')}
+          value={stats.approved}
+          color="success"
+        />
       </div>
 
       {error && (
@@ -785,15 +887,7 @@ function QuickTabButton({ active, onClick, label, count }: QuickTabButtonProps) 
   );
 }
 
-import type { TFunction } from 'i18next';
-
-function StatusBadge({
-  status,
-  t,
-}: {
-  status: SummaryStatus;
-  t: TFunction;
-}) {
+function StatusBadge({ status, t }: { status: SummaryStatus; t: TFunction }) {
   const variants: Record<SummaryStatus, string> = {
     draft: 'bg-text-muted/10 text-text-muted',
     review: 'bg-info/10 text-info',
