@@ -16,6 +16,7 @@ import {
   GraduationCap,
   ChevronLeft,
   ChevronRight,
+  MapPin,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore } from '../../stores/entity-store';
@@ -135,6 +136,7 @@ export function ReportsListPage() {
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
+  const [regionFilter, setRegionFilter] = useState<string>('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [hasCreatePermission, setHasCreatePermission] = useState(false);
@@ -150,7 +152,7 @@ export function ReportsListPage() {
   const noTemplates = !templatesLoading && templates.length === 0;
 
   // ═══════════════════════════════════════════════════════════
-  // ⭐ Permission check + Realtime listener (StrictMode-safe)
+  // Permission check + Realtime
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
     let subscription: any = null;
@@ -190,7 +192,6 @@ export function ReportsListPage() {
 
       if (!isMounted) return;
 
-      // ⭐ اسم قناة فريد لتجنب تعارض StrictMode
       const channelName = `reports_permissions_${Date.now()}_${Math.random()
         .toString(36)
         .slice(2, 9)}`;
@@ -223,7 +224,6 @@ export function ReportsListPage() {
         console.warn('⚠️ Realtime subscription failed:', err);
       }
 
-      // خيار احتياطي: فحص كل 10 ثوانٍ
       if (isMounted) {
         intervalId = setInterval(checkPermission, 10000);
       }
@@ -237,7 +237,7 @@ export function ReportsListPage() {
         try {
           supabase.removeChannel(subscription);
         } catch (err) {
-          // تجاهل — قد تكون القناة أُزيلت بالفعل
+          // تجاهل
         }
       }
       if (intervalId) clearInterval(intervalId);
@@ -289,6 +289,19 @@ export function ReportsListPage() {
     return i18n.language === 'ar' ? 'المدرسة / المركز' : 'School / Center';
   }, [activeEntity?.roleCode, activeEntity?.regionModes, i18n.language]);
 
+  // ⭐ استخراج المناطق الفريدة من التقارير (للفلترة)
+  const uniqueRegions = useMemo(() => {
+    const map = new Map<string, string>();
+    reports.forEach((r) => {
+      const regionName = (r as any).region?.name_ar;
+      const regionId = r.region_id;
+      if (regionId && regionName) {
+        map.set(regionId, regionName);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name_ar]) => ({ id, name_ar }));
+  }, [reports]);
+
   const filteredReports = useMemo(() => {
     let result = reports;
 
@@ -300,6 +313,10 @@ export function ReportsListPage() {
       result = result.filter(
         (r) => getTemplateKind(r.template?.code) === kindFilter
       );
+    }
+
+    if (regionFilter !== 'all') {
+      result = result.filter((r) => r.region_id === regionFilter);
     }
 
     if (filters.searchQuery) {
@@ -332,6 +349,7 @@ export function ReportsListPage() {
     reports,
     statusFilter,
     kindFilter,
+    regionFilter,
     filters.searchQuery,
     filters.periodStart,
     filters.periodEnd,
@@ -389,14 +407,14 @@ export function ReportsListPage() {
 
   useEffect(() => {
     checkScroll();
-    const t = setTimeout(checkScroll, 100);
+    const timer = setTimeout(checkScroll, 100);
 
     const el = tableScrollRef.current;
     if (el) {
       el.addEventListener('scroll', checkScroll);
       window.addEventListener('resize', checkScroll);
       return () => {
-        clearTimeout(t);
+        clearTimeout(timer);
         el.removeEventListener('scroll', checkScroll);
         window.removeEventListener('resize', checkScroll);
       };
@@ -424,6 +442,14 @@ export function ReportsListPage() {
   if (loading && reports.length === 0) {
     return <Loading message={t('reports_page.loading_reports')} />;
   }
+
+  const hasAnyFilter =
+    filters.searchQuery ||
+    filters.periodStart ||
+    filters.periodEnd ||
+    kindFilter !== 'all' ||
+    statusFilter !== 'all' ||
+    regionFilter !== 'all';
 
   return (
     <div className="space-y-6">
@@ -555,17 +581,14 @@ export function ReportsListPage() {
             {t('reports_page.advanced_options')}
           </Button>
 
-          {(filters.searchQuery ||
-            filters.periodStart ||
-            filters.periodEnd ||
-            kindFilter !== 'all' ||
-            statusFilter !== 'all') && (
+          {hasAnyFilter && (
             <Button
               variant="ghost"
               icon={<X className="w-4 h-4" />}
               onClick={() => {
                 setStatusFilter('all');
                 setKindFilter('all');
+                setRegionFilter('all');
                 setFilters({
                   searchQuery: '',
                   status: '',
@@ -585,7 +608,7 @@ export function ReportsListPage() {
 
         {showAdvanced && (
           <div className="px-4 pb-4 border-t border-border pt-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <div>
                 <label className="block text-xs font-medium text-text-muted mb-1">
                   {t('reports_page.report_type')}
@@ -604,6 +627,27 @@ export function ReportsListPage() {
                   <option value="tls">
                     {t('aggregates_page.report_type_tls')}
                   </option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-text-muted mb-1">
+                  <MapPin className="inline w-3.5 h-3.5 mr-1" />
+                  {i18n.language === 'ar' ? 'المنطقة التعليمية' : 'Region'}
+                </label>
+                <select
+                  value={regionFilter}
+                  onChange={(e) => setRegionFilter(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm"
+                >
+                  <option value="all">
+                    {i18n.language === 'ar' ? 'كل المناطق' : 'All Regions'}
+                  </option>
+                  {uniqueRegions.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name_ar}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -636,6 +680,30 @@ export function ReportsListPage() {
           </div>
         )}
       </Card>
+
+      {/* ⭐ عدّاد التقارير المفلترة */}
+      <div className="flex items-center justify-between text-sm px-1">
+        <span className="text-text-muted">
+          {i18n.language === 'ar' ? (
+            <>
+              عرض <strong className="text-text">{filteredReports.length}</strong>{' '}
+              من <strong className="text-text">{reports.length}</strong> تقرير
+            </>
+          ) : (
+            <>
+              Showing <strong className="text-text">{filteredReports.length}</strong>{' '}
+              of <strong className="text-text">{reports.length}</strong> reports
+            </>
+          )}
+          {hasAnyFilter && filteredReports.length !== reports.length && (
+            <span className="ml-2 px-2 py-0.5 rounded-full bg-warning/10 text-warning text-xs">
+              {i18n.language === 'ar'
+                ? `(${reports.length - filteredReports.length} مخفي بسبب الفلاتر)`
+                : `(${reports.length - filteredReports.length} hidden by filters)`}
+            </span>
+          )}
+        </span>
+      </div>
 
       {/* Error */}
       {error && (
@@ -719,6 +787,9 @@ export function ReportsListPage() {
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden md:table-cell">
                     {entityColumnLabel}
                   </th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden lg:table-cell">
+                    {i18n.language === 'ar' ? 'المنطقة' : 'Region'}
+                  </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden md:table-cell">
                     {i18n.language === 'ar' ? 'المعلم' : 'Teacher'}
                   </th>
@@ -737,6 +808,7 @@ export function ReportsListPage() {
                 {filteredReports.map((report) => {
                   const badge = getStatusBadge(report.status, t);
                   const teacherName = extractTeacherName(report.data as any);
+                  const regionName = (report as any).region?.name_ar;
 
                   return (
                     <tr
@@ -774,6 +846,15 @@ export function ReportsListPage() {
                             title={report.entity?.name_ar}
                           >
                             {report.entity?.name_ar || '—'}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4 hidden lg:table-cell">
+                        <div className="flex items-center gap-2 text-sm text-text">
+                          <MapPin className="w-4 h-4 text-info flex-shrink-0" />
+                          <span className="truncate max-w-[150px]">
+                            {regionName || '—'}
                           </span>
                         </div>
                       </td>

@@ -145,10 +145,15 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
         roleCode || ''
       );
 
+      // ⭐ Select مع region
       let query = supabase
         .from('reports')
         .select(
-          '*, template:form_templates ( id, code, name_ar, category:template_categories ( code, name_ar, color, icon ) ), entity:entities!reports_entity_id_fkey ( id, name_ar, code ), creator:users!reports_created_by_fkey ( id, full_name, email )'
+          `*,
+          template:form_templates ( id, code, name_ar, category:template_categories ( code, name_ar, color, icon ) ),
+          entity:entities!reports_entity_id_fkey ( id, name_ar, code ),
+          region:entities!reports_region_id_fkey ( id, name_ar, code ),
+          creator:users!reports_created_by_fkey ( id, full_name, email )`
         )
         .eq('is_deleted', false)
         .order('created_at', { ascending: false })
@@ -156,8 +161,6 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
 
       // 🔑 الفلترة حسب الدور
       if (isManager) {
-        // ⭐ مدير المدرسة/المركز: يرى التقارير التي entity_id الخاص بها يطابق كيانه
-        // تم إضافة region_id لدعم التقارير القديمة التي حُفظت قبل التعديل
         const { data: entityData } = await supabase
           .from('entities')
           .select('region_id')
@@ -172,7 +175,6 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
           query = query.or(`entity_id.eq.${entityId},created_by.eq.${userId}`);
         }
       } else if (isRegionManager) {
-        // ⭐ جلب نوع الكيان + region_id
         const { data: entityData } = await supabase
           .from('entities')
           .select(`
@@ -187,14 +189,11 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
           entity_type: { code: string } | null;
         } | null;
 
-        // ⭐ الكيان نفسه "منطقة" → استخدم entityId مباشرة
         if (entity?.entity_type?.code === 'region') {
           query = query.eq('region_id', entityId);
         } else if (entity?.region_id) {
-          // مدرسة/مركز → استخدم region_id
           query = query.eq('region_id', entity.region_id);
         } else {
-          // لا منطقة → فقط تقاريره
           query = query.eq('created_by', userId);
         }
       } else if (!canViewAll) {
@@ -268,7 +267,11 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
       const { data: reportData, error: reportError } = await supabase
         .from('reports')
         .select(
-          '*, template:form_templates ( id, code, name_ar, description, category:template_categories ( code, name_ar, color, icon ) ), entity:entities!reports_entity_id_fkey ( id, name_ar, code ), creator:users!reports_created_by_fkey ( id, full_name, email )'
+          `*,
+          template:form_templates ( id, code, name_ar, description, category:template_categories ( code, name_ar, color, icon ) ),
+          entity:entities!reports_entity_id_fkey ( id, name_ar, code ),
+          region:entities!reports_region_id_fkey ( id, name_ar, code ),
+          creator:users!reports_created_by_fkey ( id, full_name, email )`
         )
         .eq('id', reportId)
         .eq('is_deleted', false)
@@ -370,7 +373,6 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
         throw new Error(error.message || 'فشل إنشاء التقرير');
       }
 
-      // 🔔 إرسال التنبيه
       try {
         await sendNotification({
           triggerEvent: 'report.created',
@@ -432,7 +434,6 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
         throw new Error(error.message || 'فشل تحديث التقرير');
       }
 
-      // 🔔 إرسال التنبيه
       try {
         await sendNotification({
           triggerEvent: 'report.updated',
@@ -509,7 +510,6 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
         throw new Error(deleteError.message || 'فشل حذف التقرير');
       }
 
-      // 🔔 إرسال التنبيه
       try {
         await sendNotification({
           triggerEvent: 'report.deleted',

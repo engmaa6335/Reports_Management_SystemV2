@@ -37,7 +37,6 @@ function getGradeLabel(gradeValue: string): string {
   return grades[gradeValue] || gradeValue || '—';
 }
 
-// ⭐ تحقق من صحة UUID
 function isValidUuid(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   if (value.length < 32 || value.length > 40) return false;
@@ -84,11 +83,12 @@ export async function listAvailableAggregateTemplates(
     )
   );
 
+  // ⭐ نضيف name_en للقوالب
   let query = supabase
     .from('aggregate_templates')
     .select(`
       *,
-      category:template_categories ( id, code, name_ar, icon, color ),
+      category:template_categories ( id, code, name_ar, name_en, icon, color ),
       creator_role:roles ( id, code, name_ar )
     `)
     .eq('is_active', true);
@@ -125,7 +125,7 @@ export async function getAggregateTemplateById(
     .from('aggregate_templates')
     .select(`
       *,
-      category:template_categories ( id, code, name_ar, icon, color ),
+      category:template_categories ( id, code, name_ar, name_en, icon, color ),
       creator_role:roles ( id, code, name_ar )
     `)
     .eq('id', id)
@@ -138,7 +138,7 @@ export async function getAggregateTemplateById(
 }
 
 // ═══════════════════════════════════════════════════════════
-// ⭐ Fetch Visits — مع فلترة المنطقة
+// ⭐ Fetch Visits — مع إصلاحات
 // ═══════════════════════════════════════════════════════════
 
 interface FetchVisitsParams {
@@ -146,7 +146,7 @@ interface FetchVisitsParams {
   periodStart: string;
   periodEnd: string;
   userId: string;
-  entityId: string;      // ⭐ المنطقة النشطة
+  entityId: string;
   reportType: 'RL' | 'TLS';
 }
 
@@ -167,22 +167,30 @@ export async function fetchVisitsInPeriod({
     reportType,
   });
 
-  // ⭐ جلب فقط التقارير التي تتبع لنفس المنطقة
+  // ⭐ الإصلاح 1: نبحث في region_id أو entity_id (يقبل كلا الحالتين)
+  // ⭐ الإصلاح 2: حذف created_by ليشمل زيارات الجميع
   const { data: reports, error } = await supabase
     .from('reports')
-    .select('id, data, entity_id, created_at')
+    .select('id, data, entity_id, region_id, created_at')
     .eq('template_id', sourceTemplateId)
-    .eq('created_by', userId)
-    .eq('entity_id', entityId)
-    .eq('is_deleted', false);
+    .eq('is_deleted', false)
+    .or(`region_id.eq.${entityId},entity_id.eq.${entityId}`);
 
-  if (error) throw error;
+  if (error) {
+    console.error('❌ fetchVisitsInPeriod query error:', error);
+    throw error;
+  }
+
   if (!reports || reports.length === 0) {
-    console.log('ℹ️ No reports found for this entity');
+    console.warn(
+      `ℹ️ No reports found for entity/region ${entityId} with template ${sourceTemplateId}`
+    );
     return [];
   }
 
-  console.log(`📄 Found ${reports.length} reports for entity ${entityId}`);
+  console.log(
+    `📄 Found ${reports.length} reports (before period filter)`
+  );
 
   // فلترة محلية على visit_date
   const filtered = reports.filter((r) => {
@@ -191,7 +199,10 @@ export async function fetchVisitsInPeriod({
     return visitDate >= periodStart && visitDate <= periodEnd;
   });
 
-  console.log(`✅ Filtered to ${filtered.length} visits in period`);
+  console.log(
+    `✅ Filtered to ${filtered.length} visits in period ${periodStart} → ${periodEnd}`
+  );
+
   if (filtered.length === 0) return [];
 
   const entityField = reportType === 'RL' ? 'school' : 'learning_center';
@@ -323,20 +334,19 @@ export async function listUserAggregates(
   entityId: string,
   filters?: Partial<AggregateFilters>
 ): Promise<AggregateReportWithRelations[]> {
-  let query = supabase
+  const { data, error } = await supabase
     .from('aggregate_reports')
     .select(`
       *,
       creator:users!aggregate_reports_created_by_fkey ( id, full_name, email ),
       entity:entities!aggregate_reports_entity_id_fkey ( id, name_ar ),
-      aggregate_template:aggregate_templates ( id, code, name_ar, aggregate_type, calculations )
+      aggregate_template:aggregate_templates ( id, code, name_ar, name_en, aggregate_type, calculations )
     `)
     .eq('is_deleted', false)
     .eq('created_by', userId)
     .order('created_at', { ascending: false })
     .limit(200);
 
-  const { data, error } = await query;
   if (error) throw error;
 
   let results = (data || []) as unknown as AggregateReportWithRelations[];
@@ -355,8 +365,9 @@ export async function listUserAggregates(
   if (filters?.search?.trim()) {
     const s = filters.search.toLowerCase().trim();
     results = results.filter((r) => {
-      const name = r.aggregate_template?.name_ar?.toLowerCase() || '';
-      return name.includes(s);
+      const nameAr = r.aggregate_template?.name_ar?.toLowerCase() || '';
+      const nameEn = (r.aggregate_template as any)?.name_en?.toLowerCase() || '';
+      return nameAr.includes(s) || nameEn.includes(s);
     });
   }
 
@@ -372,7 +383,7 @@ export async function getAggregateById(
       *,
       creator:users!aggregate_reports_created_by_fkey ( id, full_name, email ),
       entity:entities!aggregate_reports_entity_id_fkey ( id, name_ar ),
-      aggregate_template:aggregate_templates ( id, code, name_ar, aggregate_type, calculations )
+      aggregate_template:aggregate_templates ( id, code, name_ar, name_en, aggregate_type, calculations )
     `)
     .eq('id', id)
     .eq('is_deleted', false)
