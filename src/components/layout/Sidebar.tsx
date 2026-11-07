@@ -1,5 +1,6 @@
+// src/components/layout/Sidebar.tsx
 // ═══════════════════════════════════════════════════════════
-// Sidebar — dynamic (reads from pages-store)
+// Sidebar — dynamic (يعتمد كلياً على pages-store)
 // ═══════════════════════════════════════════════════════════
 
 import { useEffect, useRef, useState } from 'react';
@@ -46,10 +47,7 @@ export function Sidebar({ open }: SidebarProps) {
     }
   }, [user?.id, initialized, loadPages]);
 
-  // ═══════════════════════════════════════════
   // Mobile detection
-  // ═══════════════════════════════════════════
-
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 640);
     checkMobile();
@@ -57,18 +55,12 @@ export function Sidebar({ open }: SidebarProps) {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // ═══════════════════════════════════════════
   // Close popup on route change
-  // ═══════════════════════════════════════════
-
   useEffect(() => {
     setSettingsPopupOpen(false);
   }, [location.pathname]);
 
-  // ═══════════════════════════════════════════
   // Close popup on outside click / escape
-  // ═══════════════════════════════════════════
-
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (
@@ -102,16 +94,12 @@ export function Sidebar({ open }: SidebarProps) {
     e.preventDefault();
     if (settingsButtonRef.current) {
       const rect = settingsButtonRef.current.getBoundingClientRect();
-
-      // ⭐ popup ينمو للأعلى من زر الإعدادات
       const bottom = window.innerHeight - rect.bottom + 8;
-
       let left = isRTL ? rect.left - 260 : rect.right + 8;
       if (left < 8) left = 8;
       if (left + 260 > window.innerWidth - 8) {
         left = window.innerWidth - 260 - 8;
       }
-
       setPopupPosition({ bottom, left });
     }
     setSettingsPopupOpen((prev) => !prev);
@@ -126,8 +114,8 @@ export function Sidebar({ open }: SidebarProps) {
   // Derived data
   // ═══════════════════════════════════════════
 
-  // ⭐ Dashboard is always visible (hardcoded exception)
-  const dashboardPage: UserAccessiblePage | null =
+  // Dashboard is always visible
+  const dashboardPage: UserAccessiblePage =
     pages.find((p) => p.page_code === 'dashboard') || {
       page_code: 'dashboard',
       name_ar: 'الرئيسية',
@@ -139,13 +127,13 @@ export function Sidebar({ open }: SidebarProps) {
       permissions: ['view'],
     };
 
-  // ⭐ All main pages except dashboard + settings parent
+  // ⭐ Main pages (from pages-store فقط — لا fallback)
   const mainPages = pages
     .filter((p) => p.module === 'main' && p.page_code !== 'dashboard')
     .filter((p) => p.page_code !== 'settings')
     .sort((a, b) => a.order_index - b.order_index);
 
-  // ⭐ Settings sub-pages
+  // ⭐ Settings sub-pages (from pages-store فقط)
   const settingsPages = pages
     .filter((p) => p.module === 'settings' && p.page_code !== 'settings')
     .sort((a, b) => a.order_index - b.order_index);
@@ -187,7 +175,7 @@ export function Sidebar({ open }: SidebarProps) {
             </div>
           )}
 
-          {/* Dashboard (always visible) */}
+          {/* Dashboard */}
           {!loading && (
             <NavLink
               to={dashboardPage.route_path}
@@ -207,7 +195,7 @@ export function Sidebar({ open }: SidebarProps) {
             </NavLink>
           )}
 
-          {/* Main pages (dynamic) */}
+          {/* Main pages */}
           {!loading &&
             mainPages.map((page) => (
               <NavLink
@@ -228,7 +216,7 @@ export function Sidebar({ open }: SidebarProps) {
               </NavLink>
             ))}
 
-          {/* Settings button (dynamic) */}
+          {/* Settings button */}
           {!loading && showSettings && (
             <button
               ref={settingsButtonRef}
@@ -259,7 +247,7 @@ export function Sidebar({ open }: SidebarProps) {
         </div>
       </aside>
 
-      {/* ═══ Desktop Popup (grows upward) ═══ */}
+      {/* Desktop Popup */}
       {!isMobile && settingsPopupOpen && showSettings && (
         <div
           ref={popupRef}
@@ -309,7 +297,7 @@ export function Sidebar({ open }: SidebarProps) {
         </div>
       )}
 
-      {/* ═══ Mobile Bottom Sheet ═══ */}
+      {/* Mobile Bottom Sheet */}
       {isMobile && settingsPopupOpen && showSettings && (
         <div
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"

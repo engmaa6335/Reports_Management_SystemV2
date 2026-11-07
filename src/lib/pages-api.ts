@@ -1,5 +1,6 @@
+// src/lib/pages-api.ts
 // ═══════════════════════════════════════════════════════════
-// Pages API — dynamic page access
+// Pages API — dynamic page access (with entity scoping)
 // ═══════════════════════════════════════════════════════════
 
 import { supabase } from './supabase';
@@ -11,11 +12,15 @@ import type {
 } from '../types/pages';
 
 // ═══════════════════════════════════════════════════════════
-// Get user accessible pages (uses RPC)
+// Get user accessible pages (uses RPC, entity-aware)
 // ═══════════════════════════════════════════════════════════
 
-export async function getUserAccessiblePages(): Promise<UserAccessiblePage[]> {
-  const { data, error } = await supabase.rpc('get_user_accessible_pages');
+export async function getUserAccessiblePages(
+  entityId?: string | null
+): Promise<UserAccessiblePage[]> {
+  const { data, error } = await supabase.rpc('get_user_accessible_pages', {
+    p_entity_id: entityId ?? null,
+  });
 
   if (error) {
     console.error('❌ getUserAccessiblePages error:', error);
@@ -71,15 +76,17 @@ export async function updatePage(
 }
 
 // ═══════════════════════════════════════════════════════════
-// Check page access for a specific action
+// Check page access for a specific action (entity-aware)
 // ═══════════════════════════════════════════════════════════
 
 export async function checkPageAccess(
   pageCode: string,
-  action: PageAction = 'view'
+  action: PageAction = 'view',
+  entityId?: string | null
 ): Promise<boolean> {
   const { data, error } = await supabase.rpc('check_user_has_permission', {
     perm_code: `${pageCode}.${action}`,
+    p_entity_id: entityId ?? null,
   });
 
   if (error) {
@@ -105,7 +112,6 @@ export function groupPagesByModule(
     grouped.set(page.module, list);
   }
 
-  // Sort each group by order_index
   for (const [module, list] of grouped.entries()) {
     list.sort((a, b) => a.order_index - b.order_index);
     grouped.set(module, list);

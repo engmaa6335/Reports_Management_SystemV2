@@ -19,6 +19,13 @@ export interface BulkImportResult {
     message: string;
     [key: string]: any;
   }>;
+  // ✅ جديد: تفاصيل الصفوف المطابقة (تُملأ في dry_run)
+  matched_details?: Array<{
+    row: number;
+    user_id: string;
+    match_method: string;
+    entity_ids: string[];
+  }>;
 }
 
 export interface BulkImportJob {

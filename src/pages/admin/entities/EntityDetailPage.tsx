@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { useEntitiesStore } from '../../../stores/entities-store';
 import { useEntityStore } from '../../../stores/entity-store';
-import { usePermission } from '../../../hooks/usePermission'; // ⭐ إضافة
+import { usePermission } from '../../../hooks/usePermission';
 import { Button, Card } from '../../../components/ui';
 import { Loading } from '../../../components/ui/Loading';
 import { ConfirmModal } from '../../../components/ui/ConfirmModal';
@@ -83,6 +83,12 @@ function formatDateTime(dateStr: string | null): string {
 }
 
 // ================================================
+// Tab Type
+// ================================================
+
+type EntityDetailTab = 'info' | 'children' | 'users' | 'reports' | 'activity';
+
+// ================================================
 // Confirm State Type
 // ================================================
 
@@ -109,6 +115,8 @@ export function EntityDetailPage() {
   const { allowed: canEdit } = usePermission('entities.edit');
   const { allowed: canDelete } = usePermission('entities.delete');
   const { allowed: canManage } = usePermission('entities.manage');
+  // ⭐ صلاحية عرض المستخدمين (لإخفاء Tab "المستخدمون" عن غير المصرح)
+  const { allowed: canViewUsers } = usePermission('users.view');
 
   const hasEditPermission = canManage || canEdit;
   const hasDeletePermission = canManage || canDelete;
@@ -134,9 +142,7 @@ export function EntityDetailPage() {
     clearError,
   } = useEntitiesStore();
 
-  const [activeTab, setActiveTab] = useState<
-    'info' | 'children' | 'users' | 'reports' | 'activity'
-  >('info');
+  const [activeTab, setActiveTab] = useState<EntityDetailTab>('info');
 
   const [confirmState, setConfirmState] = useState<ConfirmState>({
     open: false,
@@ -161,18 +167,29 @@ export function EntityDetailPage() {
 
     loadEntityById(id);
     loadActivity(id);
-    loadRelations(id);
+    // ⭐ جلب المستخدمين فقط لمن يملك users.view
+    if (canViewUsers) {
+      loadRelations(id);
+    }
 
     return () => {
       clearSelectedEntity();
     };
   }, [
     id,
+    canViewUsers,
     loadEntityById,
     loadActivity,
     loadRelations,
     clearSelectedEntity,
   ]);
+
+  // ⭐ إعادة تعيين التبويب النشط إذا لم يعد متاحاً
+  useEffect(() => {
+    if (activeTab === 'users' && !canViewUsers) {
+      setActiveTab('info');
+    }
+  }, [canViewUsers, activeTab]);
 
   // ================================================
   // Handlers
@@ -316,6 +333,44 @@ export function EntityDetailPage() {
   const typeColor = getTypeColor(typeCode);
   const isActive = entity.is_active ?? false;
 
+  // ⭐ التبويبات — "المستخدمون" يظهر فقط لمن يملك users.view
+  const tabs: Array<{
+    id: EntityDetailTab;
+    label: string;
+    icon: React.ReactNode;
+    count?: number;
+  }> = [
+    { id: 'info', label: 'معلومات', icon: <Building2 className="w-4 h-4" /> },
+    {
+      id: 'children',
+      label: 'الأبناء',
+      icon: <GitBranch className="w-4 h-4" />,
+      count: entity.children_count,
+    },
+    // ⭐ المستخدمون — فقط لمن يملك users.view
+    ...(canViewUsers
+      ? [
+          {
+            id: 'users' as EntityDetailTab,
+            label: 'المستخدمون',
+            icon: <Users className="w-4 h-4" />,
+            count: entity.users_count,
+          },
+        ]
+      : []),
+    {
+      id: 'reports',
+      label: 'التقارير',
+      icon: <FileText className="w-4 h-4" />,
+      count: entity.reports_count,
+    },
+    {
+      id: 'activity',
+      label: 'النشاط',
+      icon: <Activity className="w-4 h-4" />,
+    },
+  ];
+
   // ================================================
   // Render — Main
   // ================================================
@@ -430,7 +485,7 @@ export function EntityDetailPage() {
       )}
 
       {/* Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className={`grid grid-cols-1 gap-4 ${canViewUsers ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
         <Card padding="md" className="text-center">
           <div className="text-3xl font-bold text-info">
             {entity.children_count ?? 0}
@@ -439,14 +494,17 @@ export function EntityDetailPage() {
             <GitBranch className="w-3 h-3" /> كيانات فرعية
           </div>
         </Card>
-        <Card padding="md" className="text-center">
-          <div className="text-3xl font-bold text-primary">
-            {entity.users_count ?? 0}
-          </div>
-          <div className="text-xs text-text-muted mt-1 flex items-center justify-center gap-1">
-            <Users className="w-3 h-3" /> مستخدمون
-          </div>
-        </Card>
+        {/* ⭐ عدد المستخدمين يظهر فقط لمن يملك users.view */}
+        {canViewUsers && (
+          <Card padding="md" className="text-center">
+            <div className="text-3xl font-bold text-primary">
+              {entity.users_count ?? 0}
+            </div>
+            <div className="text-xs text-text-muted mt-1 flex items-center justify-center gap-1">
+              <Users className="w-3 h-3" /> مستخدمون
+            </div>
+          </Card>
+        )}
         <Card padding="md" className="text-center">
           <div className="text-3xl font-bold text-warning">
             {entity.reports_count ?? 0}
@@ -459,35 +517,10 @@ export function EntityDetailPage() {
 
       {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-border overflow-x-auto">
-        {[
-          { id: 'info', label: 'معلومات', icon: <Building2 className="w-4 h-4" /> },
-          {
-            id: 'children',
-            label: 'الأبناء',
-            icon: <GitBranch className="w-4 h-4" />,
-            count: entity.children_count,
-          },
-          {
-            id: 'users',
-            label: 'المستخدمون',
-            icon: <Users className="w-4 h-4" />,
-            count: entity.users_count,
-          },
-          {
-            id: 'reports',
-            label: 'التقارير',
-            icon: <FileText className="w-4 h-4" />,
-            count: entity.reports_count,
-          },
-          {
-            id: 'activity',
-            label: 'النشاط',
-            icon: <Activity className="w-4 h-4" />,
-          },
-        ].map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as typeof activeTab)}
+            onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-primary text-primary'
@@ -623,7 +656,7 @@ export function EntityDetailPage() {
                 return (
                   <button
                     key={child.id}
-                    onClick={() => navigate(`/admin/entities/${child.id}`)}
+                    onClick={() => navigate(`/settings/entities/${child.id}`)}
                     className="w-full text-right p-3 rounded-lg border border-border bg-surface hover:border-primary/30 transition-colors flex items-center gap-3"
                   >
                     <div
@@ -650,8 +683,8 @@ export function EntityDetailPage() {
         </Card>
       )}
 
-      {/* Tab: Users */}
-      {activeTab === 'users' && (
+      {/* ⭐ Tab: Users — يظهر فقط لمن يملك users.view */}
+      {activeTab === 'users' && canViewUsers && (
         <Card padding="lg">
           <h3 className="text-lg font-semibold text-text mb-4">
             👥 المستخدمون المرتبطون ({linkedUsers.length})
@@ -671,7 +704,7 @@ export function EntityDetailPage() {
               {linkedUsers.map((u) => (
                 <button
                   key={u.assignment_id}
-                  onClick={() => navigate(`/admin/users/${u.user_id}`)}
+                  onClick={() => navigate(`/settings/users/${u.user_id}`)}
                   className="w-full text-right p-3 rounded-lg border border-border bg-surface hover:border-primary/30 transition-colors flex items-center gap-3"
                 >
                   <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold flex-shrink-0">

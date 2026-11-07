@@ -95,9 +95,45 @@ interface ReportsState {
   refresh: (userId: string, entityId: string) => Promise<void>;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// Helper: جلب أسماء المنشئين عبر الدالة العامة (بدون RLS users)
+// ═══════════════════════════════════════════════════════════════════════
+
+interface PublicUserInfo {
+  id: string;
+  full_name: string;
+  username: string;
+  email: string;
+  avatar_url: string | null;
+  is_active: boolean;
+}
+
+async function fetchCreatorsMap(
+  userIds: (string | null | undefined)[]
+): Promise<Map<string, PublicUserInfo>> {
+  const uniqueIds = [...new Set(userIds.filter((id): id is string => !!id))];
+
+  if (uniqueIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase.rpc('get_users_public_info', {
+    p_user_ids: uniqueIds,
+  });
+
+  if (error) {
+    console.error('❌ fetchCreatorsMap error:', error);
+    return new Map();
+  }
+
+  return new Map(
+    ((data || []) as PublicUserInfo[]).map((u) => [u.id, u])
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Store
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export const useReportsStore = create<ReportsState>((set, get) => ({
   reports: [],
@@ -145,15 +181,14 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
         roleCode || ''
       );
 
-      // ⭐ Select مع region
+      // ⭐ Select بدون users join (لأن RLS users قد تحجب)
       let query = supabase
         .from('reports')
         .select(
           `*,
           template:form_templates ( id, code, name_ar, category:template_categories ( code, name_ar, color, icon ) ),
           entity:entities!reports_entity_id_fkey ( id, name_ar, code ),
-          region:entities!reports_region_id_fkey ( id, name_ar, code ),
-          creator:users!reports_created_by_fkey ( id, full_name, email )`
+          region:entities!reports_region_id_fkey ( id, name_ar, code )`
         )
         .eq('is_deleted', false)
         .order('created_at', { ascending: false })
@@ -234,6 +269,22 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
 
       const reports = (data || []) as unknown as ReportWithRelations[];
 
+      // ⭐ جلب أسماء المنشئين عبر الدالة العامة
+      const creatorsMap = await fetchCreatorsMap(
+        reports.map((r) => r.created_by)
+      );
+
+      reports.forEach((r) => {
+        const creator = creatorsMap.get(r.created_by);
+        if (creator) {
+          (r as any).creator = {
+            id: creator.id,
+            full_name: creator.full_name,
+            email: creator.email,
+          };
+        }
+      });
+
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -264,14 +315,14 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
     try {
       set({ loading: true, error: null, revisions: [] });
 
+      // ⭐ Select بدون users join
       const { data: reportData, error: reportError } = await supabase
         .from('reports')
         .select(
           `*,
           template:form_templates ( id, code, name_ar, description, category:template_categories ( code, name_ar, color, icon ) ),
           entity:entities!reports_entity_id_fkey ( id, name_ar, code ),
-          region:entities!reports_region_id_fkey ( id, name_ar, code ),
-          creator:users!reports_created_by_fkey ( id, full_name, email )`
+          region:entities!reports_region_id_fkey ( id, name_ar, code )`
         )
         .eq('id', reportId)
         .eq('is_deleted', false)
@@ -293,6 +344,19 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
         fields: (fieldsData || []) as ReportField[],
       };
 
+      // ⭐ جلب اسم المنشئ عبر الدالة العامة
+      if (currentReport.created_by) {
+        const creatorsMap = await fetchCreatorsMap([currentReport.created_by]);
+        const creator = creatorsMap.get(currentReport.created_by);
+        if (creator) {
+          (currentReport as any).creator = {
+            id: creator.id,
+            full_name: creator.full_name,
+            email: creator.email,
+          };
+        }
+      }
+
       set({ currentReport, loading: false });
 
       await get().loadRevisions(reportId);
@@ -313,10 +377,11 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
   // ================================================
   loadRevisions: async (reportId) => {
     try {
+      // ⭐ Select بدون users join
       const { data, error } = await supabase
         .from('report_revisions')
         .select(
-          'id, report_id, revision_number, changed_fields, change_summary, changed_by, created_at, user:users!report_revisions_changed_by_fkey ( id, full_name, email )'
+          'id, report_id, revision_number, changed_fields, change_summary, changed_by, created_at'
         )
         .eq('report_id', reportId)
         .order('revision_number', { ascending: false });
@@ -326,7 +391,31 @@ export const useReportsStore = create<ReportsState>((set, get) => ({
         return;
       }
 
-      set({ revisions: (data || []) as unknown as ReportRevision[] });
+      const revisions = (data || []) as unknown as ReportRevision[];
+
+      // ⭐ جلب أسماء من عدّلوا (changed_by) عبر الدالة العامة
+      const changedByIds = revisions
+        .map((r) => r.changed_by)
+        .filter((id): id is string => !!id);
+
+      if (changedByIds.length > 0) {
+        const creatorsMap = await fetchCreatorsMap(changedByIds);
+
+        revisions.forEach((r) => {
+          if (r.changed_by) {
+            const user = creatorsMap.get(r.changed_by);
+            if (user) {
+              r.user = {
+                id: user.id,
+                full_name: user.full_name,
+                email: user.email,
+              };
+            }
+          }
+        });
+      }
+
+      set({ revisions });
     } catch (err) {
       console.error('loadRevisions error:', err);
       set({ revisions: [] });

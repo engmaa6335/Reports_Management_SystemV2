@@ -1,53 +1,59 @@
-import { useEffect, useState } from 'react';
+// src/hooks/usePermission.ts
+// ═══════════════════════════════════════════════════════════════════════
+// usePermission — يمرّر activeEntity تلقائياً (إلا إذا مُرِّر صراحةً)
+// ═══════════════════════════════════════════════════════════════════════
+
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import {
+  usePermissionsRefresh,
+  initPermissionsRealtime,
+} from '../stores/permissions-refresh-store';
+import { useEntityStore } from '../stores/entity-store';
 
 export function usePermission(code: string, entityId?: string | null) {
   const [allowed, setAllowed] = useState<boolean | null>(null);
+  const version = usePermissionsRefresh((s) => s.version);
+  const initRef = useRef(false);
 
+  // ⭐ احصل على activeEntity من store
+  const activeEntityId = useEntityStore((s) => s.activeEntity?.entityId);
+
+  // ⭐ إذا مُرِّر entityId صراحةً (حتى لو null) → استخدمه
+  //    وإلا → استخدم activeEntity
+  const finalEntityId =
+    entityId !== undefined ? entityId : activeEntityId ?? null;
+
+  // init مرة واحدة
+  useEffect(() => {
+    if (!initRef.current) {
+      initRef.current = true;
+      initPermissionsRealtime();
+    }
+  }, []);
+
+  // إعادة الفحص عند تغيير code / entity / version
   useEffect(() => {
     let cancelled = false;
-    let channel: any = null;
 
     const checkPermission = async () => {
       try {
-        // استدعاء الدالة في قاعدة البيانات التي تتجاوز RLS
         const { data, error } = await supabase.rpc('check_user_has_permission', {
           perm_code: code,
+          p_entity_id: finalEntityId,
         });
-        
-        if (!cancelled) {
-          setAllowed(error ? false : !!data);
-        }
-      } catch (err) {
+        if (!cancelled) setAllowed(error ? false : !!data);
+      } catch {
         if (!cancelled) setAllowed(false);
       }
     };
 
-    // 1. الفحص الأولي
     checkPermission();
-
-    // 2. الاستماع لأي تغيير في الصلاحيات (لتحديث الواجهة فوراً)
-    const uniqueChannelName = `perm_${code}_${Math.random().toString(36).substring(7)}`;
-    
-    channel = supabase
-      .channel(uniqueChannelName)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'role_permissions' },
-        () => checkPermission()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'user_entity_roles' },
-        () => checkPermission()
-      )
-      .subscribe();
 
     return () => {
       cancelled = true;
-      if (channel) supabase.removeChannel(channel);
     };
-  }, [code, entityId]);
+  }, [code, finalEntityId, version]);
 
   return { allowed: allowed === true, loading: allowed === null };
 }

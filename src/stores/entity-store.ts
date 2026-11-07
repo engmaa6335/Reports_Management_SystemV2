@@ -1,3 +1,9 @@
+// src/stores/entity-store.ts
+// ═══════════════════════════════════════════════════════════
+// Entity Store — active entity + role context
+// ⭐ عند تغيير الكيان النشط → تحديث الصفحات
+// ═══════════════════════════════════════════════════════════
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
@@ -35,6 +41,20 @@ interface EntityState {
   loadUserEntities: (userId: string) => Promise<void>;
   setActiveEntity: (entityId: string) => void;
   clearEntities: () => void;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Helper: تحديث الصفحات بعد تغيير الكيان
+// ═══════════════════════════════════════════════════════════
+
+async function refreshPagesForEntity(entityId: string | null) {
+  try {
+    const { usePagesStore } = await import('./pages-store');
+    await usePagesStore.getState().refreshPages(entityId);
+    console.log('✅ [entity-store] pages refreshed for entity:', entityId);
+  } catch (err) {
+    console.error('❌ [entity-store] failed to refresh pages:', err);
+  }
 }
 
 // ================================================
@@ -113,11 +133,16 @@ export const useEntityStore = create<EntityState>()(
                   regionModes,
                 },
               });
+
+              // ⭐ حدّث الصفحات بعد تحديد الكيان
+              await refreshPagesForEntity(targetEntityId);
             } else {
               set({ activeEntity: null });
+              await refreshPagesForEntity(null);
             }
           } else {
             set({ activeEntity: null });
+            await refreshPagesForEntity(null);
           }
         } catch (err) {
           console.error('loadUserEntities error:', err);
@@ -146,6 +171,9 @@ export const useEntityStore = create<EntityState>()(
             regionModes,
           },
         });
+
+        // ⭐ أعِد تحميل الصفحات بناءً على الكيان الجديد
+        refreshPagesForEntity(entityId);
       },
 
       clearEntities: () => {

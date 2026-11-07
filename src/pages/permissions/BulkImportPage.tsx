@@ -15,36 +15,51 @@ import { Button, Card } from '../../components/ui';
 import { Loading } from '../../components/ui/Loading';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import {
-  ConfirmationModal,
-  type ConfirmationItem,
-} from '../../components/permissions/ConfirmationModal';
-import {
   bulkReassignFromExcel,
   rollbackBulkImport,
   type BulkImportResult,
-  type EntitySuggestion,
 } from '../../lib/permissions-api';
 import {
   downloadExcelTemplate,
   parseExcelFile,
   type ParsedExcelRow,
 } from '../../lib/excel-template';
-import { supabase } from '../../lib/supabase';
+
+// ═══════════════════════════════════════════════════════════
+// Type: تفاصيل الصفوف المطابقة (جديد)
+// ═══════════════════════════════════════════════════════════
+
+interface MatchedDetail {
+  row: number;
+  user_id: string;
+  match_method: string;
+  entity_ids: string[];
+}
+
+// ═══════════════════════════════════════════════════════════
+// Component
+// ═══════════════════════════════════════════════════════════
 
 export function BulkImportPage() {
-  // ⭐ فحص الصلاحية
-  const { allowed: canImport, loading: checkingImport } = usePermission('bulk_import.execute');
+  // ⭐ فحص الصلاحيات (مزدوج: execute + rollback)
+  const { allowed: canImport, loading: checkingImport } =
+    usePermission('bulk_import.execute');
+  const { allowed: canRollback, loading: checkingRollback } =
+    usePermission('bulk_import.rollback');
+
+  const checkingPermissions = checkingImport || checkingRollback;
 
   const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<ParsedExcelRow[]>([]);
-  const [previewResult, setPreviewResult] = useState<BulkImportResult | null>(null);
-  const [executeResult, setExecuteResult] = useState<BulkImportResult | null>(null);
+  const [previewResult, setPreviewResult] = useState<BulkImportResult | null>(
+    null
+  );
+  const [executeResult, setExecuteResult] = useState<BulkImportResult | null>(
+    null
+  );
   const [loading, setLoading] = useState(false);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const [confirmationItems, setConfirmationItems] = useState<ConfirmationItem[]>([]);
 
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
@@ -84,6 +99,10 @@ export function BulkImportPage() {
     }
   };
 
+  // ═══════════════════════════════════════════════════════════
+  // Handlers
+  // ═══════════════════════════════════════════════════════════
+
   const handleDownloadTemplate = async () => {
     if (!canImport) return;
     setLoadingTemplate(true);
@@ -96,7 +115,9 @@ export function BulkImportPage() {
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     if (!canImport) return;
     const f = e.target.files?.[0];
     if (!f) return;
@@ -105,8 +126,6 @@ export function BulkImportPage() {
     setError(null);
     setPreviewResult(null);
     setExecuteResult(null);
-    setShowConfirmation(false);
-    setConfirmationItems([]);
 
     try {
       const parsed = await parseExcelFile(f);
@@ -122,78 +141,11 @@ export function BulkImportPage() {
     }
   };
 
-  const extractConfirmationItems = async (
-    result: BulkImportResult
-  ): Promise<ConfirmationItem[]> => {
-    const items: ConfirmationItem[] = [];
-
-    for (const err of result.errors) {
-      if (err.type !== 'requires_confirmation') continue;
-
-      const rowNumber = parseInt(String(err.row), 10);
-      const row = rows.find((r) => r.row_number === rowNumber);
-      if (!row) continue;
-
-      const field: 'region_rl' | 'region_tls' = err.message.includes('R.L')
-        ? 'region_rl'
-        : 'region_tls';
-
-      const rawValue = row[field];
-      if (!rawValue) continue;
-
-      try {
-        const { data: rpcData, error: rpcError } = await supabase.rpc(
-          'resolve_entity_name',
-          { p_name: err.region }
-        );
-
-        if (rpcError || !rpcData || rpcData.length === 0) continue;
-
-        const entityIds = rpcData.map((r: any) => r.entity_id);
-        const { data: entitiesData, error: entitiesError } = await supabase
-          .from('entities')
-          .select('id, name_ar, name_en')
-          .in('id', entityIds);
-
-        if (entitiesError) continue;
-
-        const entityMap = new Map(
-          (entitiesData || []).map((e: any) => [e.id, e])
-        );
-
-        const suggestions: EntitySuggestion[] = rpcData.map((r: any) => {
-          const e = entityMap.get(r.entity_id);
-          return {
-            entity_id: r.entity_id,
-            name_ar: e?.name_ar || '',
-            name_en: e?.name_en || null,
-            match_type: r.match_type,
-            requires_confirmation: r.requires_confirmation,
-          };
-        });
-
-        items.push({
-          rowNumber,
-          rawValue: err.region,
-          field,
-          suggestions,
-          selected: suggestions.map((s: EntitySuggestion) => s.entity_id),
-        });
-      } catch (e) {
-        console.error(`❌ Exception for row ${rowNumber}:`, e);
-      }
-    }
-
-    return items;
-  };
-
   const handlePreview = async () => {
     if (!rows.length || !canImport) return;
     setLoading(true);
     setError(null);
     setPreviewResult(null);
-    setShowConfirmation(false);
-    setConfirmationItems([]);
 
     try {
       const result = await bulkReassignFromExcel(
@@ -205,80 +157,9 @@ export function BulkImportPage() {
         true
       );
 
-      const confirmationErrors = result.errors.filter(
-        (e) => e.type === 'requires_confirmation'
-      );
-
-      if (confirmationErrors.length > 0) {
-        const items = await extractConfirmationItems(result);
-        if (items.length > 0) {
-          setConfirmationItems(items);
-          setShowConfirmation(true);
-          return;
-        }
-      }
-
       setPreviewResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'فشل المعاينة');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleConfirmationConfirm = async (confirmedItems: ConfirmationItem[]) => {
-    if (!canImport) return;
-    setShowConfirmation(false);
-    setLoading(true);
-
-    try {
-      const updatedRows = rows.map((row) => {
-        const item = confirmedItems.find((i) => i.rowNumber === row.row_number);
-        if (!item) return row;
-
-        const selectedNames = item.selected
-          .map((entityId) => {
-            const suggestion = item.suggestions.find(
-              (s) => s.entity_id === entityId
-            );
-            return suggestion?.name_ar || '';
-          })
-          .filter(Boolean);
-
-        const field = item.field;
-        const originalValue = row[field] as string;
-        if (!originalValue) return row;
-
-        const parts = originalValue.split('+').map((p) => p.trim());
-        const newParts = parts.map((part) => {
-          if (part.includes(item.rawValue)) {
-            return selectedNames.join(' + ');
-          }
-          return part;
-        });
-
-        const newValue = newParts.join(' + ');
-
-        return {
-          ...row,
-          [field]: newValue,
-        };
-      });
-
-      setRows(updatedRows);
-
-      const result = await bulkReassignFromExcel(
-        updatedRows,
-        {
-          job_type: 'reassign',
-          file_name: file?.name || 'unknown.xlsx',
-        },
-        true
-      );
-
-      setPreviewResult(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'فشل المعاينة بعد التأكيد');
     } finally {
       setLoading(false);
     }
@@ -316,10 +197,12 @@ export function BulkImportPage() {
   };
 
   const handleRollback = () => {
-    if (!executeResult?.job_id || !canImport) return;
+    // ✅ فحص صلاحية rollback (وليس execute)
+    if (!executeResult?.job_id || !canRollback) return;
     showConfirm({
       title: 'تراجع عن الاستيراد',
-      message: 'هل تريد التراجع عن هذا الاستيراد؟ سيتم حذف الإسنادات المُنشأة.',
+      message:
+        'هل تريد التراجع عن هذا الاستيراد؟ سيتم حذف الإسنادات المُنشأة.',
       confirmText: 'نعم، تراجع',
       variant: 'danger',
       onConfirm: async () => {
@@ -348,12 +231,14 @@ export function BulkImportPage() {
     });
   };
 
-  // ⭐ شاشة التحقق من الصلاحيات
-  if (checkingImport) {
+  // ═══════════════════════════════════════════════════════════
+  // Render Guards
+  // ═══════════════════════════════════════════════════════════
+
+  if (checkingPermissions) {
     return <Loading message="جاري التحقق من الصلاحيات..." />;
   }
 
-  // ⭐ منع الوصول
   if (!canImport) {
     return (
       <div className="p-6 text-center text-danger">
@@ -364,8 +249,13 @@ export function BulkImportPage() {
     );
   }
 
+  // ═══════════════════════════════════════════════════════════
+  // Main Render
+  // ═══════════════════════════════════════════════════════════
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text flex items-center gap-2">
@@ -392,6 +282,7 @@ export function BulkImportPage() {
         </Button>
       </div>
 
+      {/* Error */}
       {error && (
         <Card padding="md" className="border-danger bg-danger/5">
           <div className="text-danger text-sm flex items-start gap-2">
@@ -407,6 +298,7 @@ export function BulkImportPage() {
         </Card>
       )}
 
+      {/* Upload Card */}
       <Card padding="lg">
         <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
           <FileSpreadsheet className="w-12 h-12 text-primary mx-auto mb-3" />
@@ -434,6 +326,7 @@ export function BulkImportPage() {
         </div>
       </Card>
 
+      {/* File Preview Table */}
       {rows.length > 0 && (
         <Card padding="lg">
           <h3 className="text-lg font-semibold mb-4">📋 معاينة الملف</h3>
@@ -452,14 +345,20 @@ export function BulkImportPage() {
               <tbody>
                 {rows.slice(0, 15).map((r) => (
                   <tr key={r.row_number} className="border-b border-border">
-                    <td className="px-3 py-2 text-text-muted">{r.row_number}</td>
+                    <td className="px-3 py-2 text-text-muted">
+                      {r.row_number}
+                    </td>
                     <td className="px-3 py-2">{r.full_name}</td>
                     <td className="px-3 py-2 text-xs" dir="ltr">
                       {r.email}
                     </td>
                     <td className="px-3 py-2 text-xs">{r.job_title}</td>
-                    <td className="px-3 py-2 text-xs">{r.region_rl || '—'}</td>
-                    <td className="px-3 py-2 text-xs">{r.region_tls || '—'}</td>
+                    <td className="px-3 py-2 text-xs">
+                      {r.region_rl || '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {r.region_tls || '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -491,6 +390,7 @@ export function BulkImportPage() {
         </Card>
       )}
 
+      {/* Preview Result */}
       {previewResult && (
         <Card padding="lg" className="border-primary/30">
           <div className="flex items-center gap-2 mb-4">
@@ -498,9 +398,14 @@ export function BulkImportPage() {
             <h3 className="text-lg font-semibold">نتائج المعاينة (Dry Run)</h3>
           </div>
           <ResultSummary result={previewResult} />
+          <MatchedDetailsPreview
+            details={(previewResult as any).matched_details || []}
+            rows={rows}
+          />
         </Card>
       )}
 
+      {/* Execute Result */}
       {executeResult && (
         <Card padding="lg" className="border-success/30">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
@@ -508,30 +413,24 @@ export function BulkImportPage() {
               <CheckCircle2 className="w-5 h-5 text-success" />
               <h3 className="text-lg font-semibold">نتائج التنفيذ</h3>
             </div>
-            <Button
-              variant="danger"
-              size="sm"
-              icon={<RotateCcw className="w-4 h-4" />}
-              onClick={handleRollback}
-              disabled={loading}
-            >
-              تراجع
-            </Button>
+            {/* ✅ زر التراجع يظهر فقط لمن يملك bulk_import.rollback */}
+            {canRollback && (
+              <Button
+                variant="danger"
+                size="sm"
+                icon={<RotateCcw className="w-4 h-4" />}
+                onClick={handleRollback}
+                disabled={loading}
+              >
+                تراجع
+              </Button>
+            )}
           </div>
           <ResultSummary result={executeResult} />
         </Card>
       )}
 
-      <ConfirmationModal
-        open={showConfirmation}
-        items={confirmationItems}
-        onConfirm={handleConfirmationConfirm}
-        onCancel={() => {
-          setShowConfirmation(false);
-          setConfirmationItems([]);
-        }}
-      />
-
+      {/* Confirm Modal */}
       <ConfirmModal
         open={confirmState.open}
         title={confirmState.title}
@@ -546,6 +445,10 @@ export function BulkImportPage() {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// ResultSummary
+// ═══════════════════════════════════════════════════════════
+
 function ResultSummary({ result }: { result: BulkImportResult }) {
   return (
     <div className="space-y-4">
@@ -558,8 +461,16 @@ function ResultSummary({ result }: { result: BulkImportResult }) {
 
       {!result.dry_run && (
         <div className="grid grid-cols-2 gap-3">
-          <StatCard label="إسنادات جديدة" value={result.created} color="success" />
-          <StatCard label="إسنادات منتهية" value={result.ended} color="info" />
+          <StatCard
+            label="إسنادات جديدة"
+            value={result.created}
+            color="success"
+          />
+          <StatCard
+            label="إسنادات منتهية"
+            value={result.ended}
+            color="info"
+          />
         </div>
       )}
 
@@ -586,6 +497,63 @@ function ResultSummary({ result }: { result: BulkImportResult }) {
     </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════
+// MatchedDetailsPreview (جديد — عرض تفاصيل المطابقة)
+// ═══════════════════════════════════════════════════════════
+
+function MatchedDetailsPreview({
+  details,
+  rows,
+}: {
+  details: MatchedDetail[];
+  rows: ParsedExcelRow[];
+}) {
+  if (!details || details.length === 0) return null;
+
+  return (
+    <div className="space-y-2 mt-4 pt-4 border-t border-border">
+      <h4 className="font-semibold text-sm flex items-center gap-2 text-primary">
+        <CheckCircle2 className="w-4 h-4" />
+        تفاصيل الصفوف المطابقة ({details.length})
+      </h4>
+      <div className="max-h-96 overflow-y-auto space-y-1">
+        {details.map((d) => {
+          const row = rows.find((r) => r.row_number === d.row);
+          return (
+            <div
+              key={d.row}
+              className="text-xs p-2 rounded border border-primary/20 bg-primary/5"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-text">
+                    صف {d.row}: {row?.full_name || '—'}
+                  </div>
+                  <div className="text-text-muted truncate">
+                    {row?.email || '—'} · {row?.job_title || '—'}
+                  </div>
+                </div>
+                <div className="flex-shrink-0 text-[10px] flex items-center gap-1">
+                  <span className="px-1.5 py-0.5 rounded bg-info/10 text-info font-mono">
+                    {d.match_method}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-success/10 text-success font-bold">
+                    {d.entity_ids.length} كيان
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// StatCard
+// ═══════════════════════════════════════════════════════════
 
 function StatCard({
   label,

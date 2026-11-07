@@ -1,3 +1,4 @@
+// src/lib/entities-api.ts
 import { supabase } from './supabase';
 import type {
   EntityType,
@@ -11,14 +12,27 @@ import type {
   LinkedReport,
 } from '../types/entities';
 
+// ═══════════════════════════════════════════════════════════════════════
+// ⭐ الأنواع المساعدة لنتيجة get_users_public_info
+// ═══════════════════════════════════════════════════════════════════════
+
+interface PublicUserInfo {
+  id: string;
+  full_name: string | null;
+  username: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  is_active: boolean | null;
+}
+
 // ⭐ Helper: تحقق من صحة UUID
 function isValidId(id: string | undefined | null): id is string {
   return !!id && id !== 'undefined' && id !== 'null' && id.length > 10;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // List Entity Types
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function listEntityTypes(): Promise<EntityType[]> {
   const { data, error } = await supabase
@@ -31,14 +45,26 @@ export async function listEntityTypes(): Promise<EntityType[]> {
   return (data || []) as EntityType[];
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // List Entities
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function listEntities(
   filters: EntityFilters
 ): Promise<EntityWithRelations[]> {
-  let query = supabase.from('entities').select('*').order('name_ar');
+  let query = supabase
+    .from('entities')
+    .select(`
+      *,
+      entity_type:entity_types!entity_type_id (
+        id, code, name_ar, icon, color, hierarchy_level
+      ),
+      parent:entities!parent_id (
+        id, name_ar,
+        entity_type:entity_types ( code )
+      )
+    `)
+    .order('name_ar');
 
   if (filters.search) {
     query = query.or(
@@ -54,28 +80,26 @@ export async function listEntities(
     query = query.eq('parent_id', filters.parentId);
   }
 
+  if (filters.regionId) {
+    query = query.eq('region_id', filters.regionId);
+  }
+
   const { data, error } = await query;
   if (error) {
-    console.error('❌ listEntities error:', error);
+    console.error('❌ listEntities error:', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
     throw error;
   }
 
-  const { data: types } = await supabase
-    .from('entity_types')
-    .select('id, code, name_ar, icon, color, hierarchy_level');
-
-  const typeMap = new Map<string, any>(
-    (types || []).map((t: any) => [t.id, t])
-  );
-
-  const parentMap = new Map<string, any>(
-    (data || []).map((e: any) => [e.id, e])
-  );
-
   let result = (data || []).map((row: any) => {
-    const type = typeMap.get(row.entity_type_id);
-    const parent = row.parent_id ? parentMap.get(row.parent_id) : null;
-    const parentType = parent ? typeMap.get(parent.entity_type_id) : null;
+    const type = Array.isArray(row.entity_type) ? row.entity_type[0] : row.entity_type;
+    const parent = Array.isArray(row.parent) ? row.parent[0] : row.parent;
+    const parentType = parent?.entity_type;
+    const parentTypeObj = Array.isArray(parentType) ? parentType[0] : parentType;
 
     return {
       id: row.id,
@@ -105,7 +129,7 @@ export async function listEntities(
         ? {
             id: parent.id,
             name_ar: parent.name_ar,
-            entity_type_code: parentType?.code || null,
+            entity_type_code: parentTypeObj?.code || null,
           }
         : null,
       region: null,
@@ -119,9 +143,9 @@ export async function listEntities(
   return result as EntityWithRelations[];
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // Get Single Entity
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function getEntityById(
   id: string
@@ -133,38 +157,21 @@ export async function getEntityById(
 
   const { data: row, error } = await supabase
     .from('entities')
-    .select('*')
+    .select(`
+      *,
+      entity_type:entity_types!entity_type_id (
+        id, code, name_ar, icon, color, hierarchy_level
+      ),
+      parent:entities!parent_id (
+        id, name_ar,
+        entity_type:entity_types ( code )
+      )
+    `)
     .eq('id', id)
     .maybeSingle();
 
   if (error) throw error;
   if (!row) return null;
-
-  const { data: type } = await supabase
-    .from('entity_types')
-    .select('id, code, name_ar, icon, color, hierarchy_level')
-    .eq('id', row.entity_type_id)
-    .maybeSingle();
-
-  let parent: any = null;
-  let parentType: any = null;
-  if (row.parent_id) {
-    const { data: p } = await supabase
-      .from('entities')
-      .select('id, name_ar, entity_type_id')
-      .eq('id', row.parent_id)
-      .maybeSingle();
-    parent = p;
-
-    if (p?.entity_type_id) {
-      const { data: pt } = await supabase
-        .from('entity_types')
-        .select('code')
-        .eq('id', p.entity_type_id)
-        .maybeSingle();
-      parentType = pt;
-    }
-  }
 
   const [childrenRes, usersRes, reportsRes] = await Promise.all([
     supabase
@@ -184,20 +191,26 @@ export async function getEntityById(
       .eq('is_deleted', false),
   ]);
 
+  const r = row as any;
+  const type = Array.isArray(r.entity_type) ? r.entity_type[0] : r.entity_type;
+  const parent = Array.isArray(r.parent) ? r.parent[0] : r.parent;
+  const parentType = parent?.entity_type;
+  const parentTypeObj = Array.isArray(parentType) ? parentType[0] : parentType;
+
   return {
-    id: row.id,
-    entity_type_id: row.entity_type_id,
-    parent_id: row.parent_id,
-    code: row.code,
-    name_ar: row.name_ar,
-    name_en: row.name_en,
-    region_id: row.region_id || null,
-    address: row.address,
-    contact_info: row.contact_info || {},
-    metadata: row.metadata || {},
-    is_active: row.is_active,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
+    id: r.id,
+    entity_type_id: r.entity_type_id,
+    parent_id: r.parent_id,
+    code: r.code,
+    name_ar: r.name_ar,
+    name_en: r.name_en,
+    region_id: r.region_id || null,
+    address: r.address,
+    contact_info: r.contact_info || {},
+    metadata: r.metadata || {},
+    is_active: r.is_active,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
     entity_type: type
       ? {
           id: type.id,
@@ -212,7 +225,7 @@ export async function getEntityById(
       ? {
           id: parent.id,
           name_ar: parent.name_ar,
-          entity_type_code: parentType?.code || null,
+          entity_type_code: parentTypeObj?.code || null,
         }
       : null,
     region: null,
@@ -222,9 +235,9 @@ export async function getEntityById(
   } as EntityWithRelations;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // Get Children
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function getEntityChildren(
   parentId: string
@@ -236,22 +249,19 @@ export async function getEntityChildren(
 
   const { data, error } = await supabase
     .from('entities')
-    .select('*')
+    .select(`
+      *,
+      entity_type:entity_types!entity_type_id (
+        id, code, name_ar, icon, color, hierarchy_level
+      )
+    `)
     .eq('parent_id', parentId)
     .order('name_ar');
 
   if (error) throw error;
 
-  const { data: types } = await supabase
-    .from('entity_types')
-    .select('id, code, name_ar, icon, color, hierarchy_level');
-
-  const typeMap = new Map<string, any>(
-    (types || []).map((t: any) => [t.id, t])
-  );
-
   return (data || []).map((row: any) => {
-    const type = typeMap.get(row.entity_type_id);
+    const type = Array.isArray(row.entity_type) ? row.entity_type[0] : row.entity_type;
     return {
       id: row.id,
       entity_type_id: row.entity_type_id,
@@ -282,9 +292,9 @@ export async function getEntityChildren(
   }) as EntityWithRelations[];
 }
 
-// ================================================
-// Get Users Linked to Entity
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// ⭐ Get Users Linked to Entity — مُنمَّط بشكل صريح
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function getEntityUsers(entityId: string): Promise<LinkedUser[]> {
   if (!isValidId(entityId)) {
@@ -294,13 +304,10 @@ export async function getEntityUsers(entityId: string): Promise<LinkedUser[]> {
 
   const { data, error } = await supabase
     .from('user_entity_roles')
-    .select(
-      `
+    .select(`
       id, user_id, role_id, is_primary, started_at, ended_at,
-      users!user_entity_roles_user_id_fkey ( id, full_name, email ),
       roles ( id, code, name_ar )
-      `
-    )
+    `)
     .eq('entity_id', entityId)
     .is('ended_at', null);
 
@@ -309,21 +316,43 @@ export async function getEntityUsers(entityId: string): Promise<LinkedUser[]> {
     throw error;
   }
 
-  return (data || []).map((row: any) => ({
-    assignment_id: row.id,
-    user_id: row.user_id,
-    full_name: row.users?.full_name || '—',
-    email: row.users?.email || '—',
-    role_code: row.roles?.code || '—',
-    role_name: row.roles?.name_ar || '—',
-    is_primary: row.is_primary || false,
-    started_at: row.started_at,
-  }));
+  if (!data || data.length === 0) return [];
+
+  const userIds = [...new Set(data.map((r: any) => r.user_id).filter(Boolean))];
+
+  // ⭐ نُنمّط نتيجة الـ RPC صراحةً
+  const { data: usersData, error: usersError } = await supabase.rpc(
+    'get_users_public_info',
+    { p_user_ids: userIds }
+  ) as { data: PublicUserInfo[] | null; error: any };
+
+  if (usersError) {
+    console.error('❌ get_users_public_info error:', usersError);
+  }
+
+  // ⭐ Map مُنمّط
+  const userMap = new Map<string, PublicUserInfo>(
+    (usersData || []).map((u) => [u.id, u])
+  );
+
+  return data.map((row: any) => {
+    const user = userMap.get(row.user_id);
+    return {
+      assignment_id: row.id,
+      user_id: row.user_id,
+      full_name: user?.full_name ?? '—',
+      email: user?.email ?? '—',
+      role_code: row.roles?.code || '—',
+      role_name: row.roles?.name_ar || '—',
+      is_primary: row.is_primary || false,
+      started_at: row.started_at,
+    };
+  });
 }
 
-// ================================================
-// Get Reports Linked to Entity
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// ⭐ Get Reports Linked to Entity — مُنمَّط
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function getEntityReports(
   entityId: string,
@@ -336,13 +365,10 @@ export async function getEntityReports(
 
   const { data, error } = await supabase
     .from('reports')
-    .select(
-      `
-      id, status, created_at,
-      form_templates ( name_ar ),
-      users!reports_created_by_fkey ( full_name )
-      `
-    )
+    .select(`
+      id, status, created_at, created_by,
+      form_templates ( name_ar )
+    `)
     .eq('entity_id', entityId)
     .eq('is_deleted', false)
     .order('created_at', { ascending: false })
@@ -353,18 +379,45 @@ export async function getEntityReports(
     throw error;
   }
 
-  return (data || []).map((row: any) => ({
-    id: row.id,
-    template_name: row.form_templates?.name_ar || '—',
-    status: row.status || 'active',
-    created_at: row.created_at,
-    created_by_name: row.users?.full_name || '—',
-  }));
+  if (!data || data.length === 0) return [];
+
+  const creatorIds = [
+    ...new Set(data.map((r: any) => r.created_by).filter(Boolean)),
+  ];
+
+  let creatorMap = new Map<string, PublicUserInfo>();
+
+  if (creatorIds.length > 0) {
+    // ⭐ نُنمّط نتيجة الـ RPC صراحةً
+    const { data: creatorsData, error: creatorsError } = (await supabase.rpc(
+      'get_users_public_info',
+      { p_user_ids: creatorIds }
+    )) as { data: PublicUserInfo[] | null; error: any };
+
+    if (creatorsError) {
+      console.error('❌ get_users_public_info error:', creatorsError);
+    }
+
+    creatorMap = new Map<string, PublicUserInfo>(
+      (creatorsData || []).map((c) => [c.id, c])
+    );
+  }
+
+  return data.map((row: any) => {
+    const creator = creatorMap.get(row.created_by);
+    return {
+      id: row.id,
+      template_name: row.form_templates?.name_ar || '—',
+      status: row.status || 'active',
+      created_at: row.created_at,
+      created_by_name: creator?.full_name ?? '—',
+    };
+  });
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // List Regions
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function listRegions(): Promise<
   { id: string; name_ar: string; code: string | null }[]
@@ -393,9 +446,9 @@ export async function listRegions(): Promise<
   }));
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // List Potential Parents
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function listPotentialParents(
   typeCode: string
@@ -450,9 +503,9 @@ export async function listPotentialParents(
   }));
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // Check Code Uniqueness
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function isCodeTaken(
   code: string,
@@ -462,21 +515,22 @@ export async function isCodeTaken(
 
   let query = supabase
     .from('entities')
-    .select('id', { count: 'exact', head: true })
-    .eq('code', code.trim());
+    .select('id')
+    .eq('code', code.trim())
+    .limit(1);
 
   if (excludeId) {
     query = query.neq('id', excludeId);
   }
 
-  const { count, error } = await query;
+  const { data, error } = await query.maybeSingle();
   if (error) throw error;
-  return (count || 0) > 0;
+  return !!data;
 }
 
-// ================================================
-// Create Entity — حل مشكلة undefined id
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// Create Entity
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function createEntity(
   payload: CreateEntityPayload
@@ -486,6 +540,7 @@ export async function createEntity(
     parent_id: payload.parent_id,
     name_ar: payload.name_ar.trim(),
     name_en: payload.name_en?.trim() || null,
+    region_id: payload.region_id || null,
     address: payload.address?.trim() || null,
     contact_info: payload.contact_info,
     metadata: payload.metadata,
@@ -496,7 +551,6 @@ export async function createEntity(
     insertData.code = payload.code.trim();
   }
 
-  // ⭐ استخدام .select() بدون .single() — لضمان إرجاع ID
   const { data, error } = await supabase
     .from('entities')
     .insert(insertData)
@@ -515,9 +569,6 @@ export async function createEntity(
   const newId = data[0]?.id;
 
   if (!newId) {
-    console.error('❌ createEntity: no id in response', data[0]);
-
-    // ⭐ Fallback: البحث بالاسم
     const { data: fallback } = await supabase
       .from('entities')
       .select('id')
@@ -527,21 +578,17 @@ export async function createEntity(
       .limit(1)
       .maybeSingle();
 
-    if (fallback?.id) {
-      console.log('✅ Found via fallback:', fallback.id);
-      return { id: fallback.id };
-    }
+    if (fallback?.id) return { id: fallback.id };
 
     throw new Error('لم يتم إرجاع ID الكيان — جرّب تحديث الصفحة');
   }
 
-  console.log('✅ Entity created:', newId);
   return { id: newId };
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // Update Entity
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function updateEntity(
   id: string,
@@ -553,22 +600,19 @@ export async function updateEntity(
 
   if (payload.entity_type_id !== undefined)
     updates.entity_type_id = payload.entity_type_id;
-  if (payload.parent_id !== undefined)
-    updates.parent_id = payload.parent_id;
-  if (payload.code !== undefined)
-    updates.code = payload.code?.trim() || null;
+  if (payload.parent_id !== undefined) updates.parent_id = payload.parent_id;
+  if (payload.code !== undefined) updates.code = payload.code?.trim() || null;
   if (payload.name_ar !== undefined)
     updates.name_ar = payload.name_ar.trim();
   if (payload.name_en !== undefined)
     updates.name_en = payload.name_en?.trim() || null;
+  if (payload.region_id !== undefined) updates.region_id = payload.region_id;
   if (payload.address !== undefined)
     updates.address = payload.address?.trim() || null;
   if (payload.contact_info !== undefined)
     updates.contact_info = payload.contact_info;
-  if (payload.metadata !== undefined)
-    updates.metadata = payload.metadata;
-  if (payload.is_active !== undefined)
-    updates.is_active = payload.is_active;
+  if (payload.metadata !== undefined) updates.metadata = payload.metadata;
+  if (payload.is_active !== undefined) updates.is_active = payload.is_active;
 
   const { error } = await supabase
     .from('entities')
@@ -578,41 +622,31 @@ export async function updateEntity(
   if (error) throw error;
 }
 
-// ================================================
-// Soft Delete
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// Soft Delete / Activate
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function softDeleteEntity(id: string): Promise<void> {
   const { error } = await supabase
     .from('entities')
-    .update({
-      is_active: false,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ is_active: false, updated_at: new Date().toISOString() })
     .eq('id', id);
 
   if (error) throw error;
 }
-
-// ================================================
-// Activate
-// ================================================
 
 export async function activateEntity(id: string): Promise<void> {
   const { error } = await supabase
     .from('entities')
-    .update({
-      is_active: true,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ is_active: true, updated_at: new Date().toISOString() })
     .eq('id', id);
 
   if (error) throw error;
 }
 
-// ================================================
-// Hard Delete Check
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// Hard Delete Check + Execute
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function canHardDelete(
   id: string
@@ -629,7 +663,8 @@ export async function canHardDelete(
     supabase
       .from('reports')
       .select('id', { count: 'exact', head: true })
-      .eq('entity_id', id),
+      .eq('entity_id', id)
+      .eq('is_deleted', false),
   ]);
 
   if ((childrenRes.count || 0) > 0) {
@@ -666,9 +701,9 @@ export async function hardDeleteEntity(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // Entity Activity
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function getEntityActivity(
   entityId: string,
@@ -692,9 +727,9 @@ export async function getEntityActivity(
   return (data || []) as EntityActivity[];
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // Stats
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function getEntityStats(): Promise<EntityStats> {
   const { data, error } = await supabase

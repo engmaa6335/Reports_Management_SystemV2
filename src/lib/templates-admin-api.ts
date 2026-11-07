@@ -1,3 +1,4 @@
+// src/lib/templates-admin-api.ts
 import { supabase } from './supabase';
 import type {
   TemplateCategory,
@@ -13,9 +14,28 @@ import type {
   DeleteTemplateCheck,
 } from '../types/templates-admin';
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
+// Helper — جلب id المستخدم العام
+// ═══════════════════════════════════════════════════════════
+
+async function getCurrentPublicUserId(): Promise<string | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const { data } = await supabase
+      .from('users')
+      .select('id')
+      .eq('auth_user_id', user.id)
+      .maybeSingle();
+    return data?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // Categories
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function listCategories(): Promise<TemplateCategory[]> {
   const { data, error } = await supabase
@@ -28,9 +48,9 @@ export async function listCategories(): Promise<TemplateCategory[]> {
   return (data || []) as TemplateCategory[];
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Templates — List
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function listTemplates(
   filters: TemplateFilters
@@ -57,25 +77,51 @@ export async function listTemplates(
   const { data, error } = await query;
   if (error) throw error;
 
-  let templates = (data || []).map((row: any) => ({
-    ...row,
-    category: row.category || null,
-    current_version: row.current_version || null,
-  })) as TemplateWithRelations[];
+  // ⭐ احسب counts لكل قالب
+  const templates = await Promise.all(
+    (data || []).map(async (row: any) => {
+      const versionId = row.current_version_id;
 
-  // فلترة محلية حسب category_code
+      const [fieldsCount, reportsCount] = await Promise.all([
+        versionId
+          ? supabase
+              .from('form_fields')
+              .select('id', { count: 'exact', head: true })
+              .eq('version_id', versionId)
+              .then((r) => r.count || 0)
+          : Promise.resolve(0),
+        supabase
+          .from('reports')
+          .select('id', { count: 'exact', head: true })
+          .eq('template_id', row.id)
+          .eq('is_deleted', false)
+          .then((r) => r.count || 0),
+      ]);
+
+      return {
+        ...row,
+        category: row.category || null,
+        current_version: row.current_version || null,
+        fields_count: fieldsCount,
+        reports_count: reportsCount,
+      };
+    })
+  );
+
+  let result = templates as TemplateWithRelations[];
+
   if (filters.categoryCode) {
-    templates = templates.filter(
+    result = result.filter(
       (t) => t.category?.code === filters.categoryCode
     );
   }
 
-  return templates;
+  return result;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Templates — Single
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function getTemplateById(
   id: string
@@ -95,12 +141,13 @@ export async function getTemplateById(
 
   const row = data as any;
 
-  // إحصائيات
   const [fieldsRes, reportsRes] = await Promise.all([
-    supabase
-      .from('form_fields')
-      .select('id', { count: 'exact', head: true })
-      .eq('version_id', row.current_version_id),
+    row.current_version_id
+      ? supabase
+          .from('form_fields')
+          .select('id', { count: 'exact', head: true })
+          .eq('version_id', row.current_version_id)
+      : Promise.resolve({ count: 0 } as any),
     supabase
       .from('reports')
       .select('id', { count: 'exact', head: true })
@@ -117,9 +164,9 @@ export async function getTemplateById(
   } as TemplateWithRelations;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Templates — Create
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function createTemplate(
   payload: CreateTemplatePayload
@@ -134,7 +181,10 @@ export async function createTemplate(
     throw new Error(`الكود "${payload.code}" مستخدم بالفعل`);
   }
 
-  // 2. إنشاء القالب
+  // 2. جلب created_by
+  const currentUserId = await getCurrentPublicUserId();
+
+  // 3. إنشاء القالب
   const { data, error } = await supabase
     .from('form_templates')
     .insert({
@@ -148,31 +198,33 @@ export async function createTemplate(
       report_kind: payload.report_kind,
       is_active: payload.is_active,
       is_locked: false,
+      created_by: currentUserId,
     })
     .select('id')
     .single();
 
   if (error) throw error;
 
-  // 3. إنشاء نسخة أولى فارغة
+  // 4. إنشاء نسخة أولى
   const { data: version, error: versionError } = await supabase
     .from('form_template_versions')
     .insert({
       template_id: data.id,
       version_number: 1,
-      schema_snapshot: {},
+      schema_snapshot: { fields: [] },
+      layout_snapshot: {},
       change_log: 'النسخة الأولى',
+      created_by: currentUserId,
     })
     .select('id')
     .single();
 
   if (versionError) {
-    // Rollback: احذف القالب
     await supabase.from('form_templates').delete().eq('id', data.id);
     throw versionError;
   }
 
-  // 4. اربط النسخة بالقالب
+  // 5. اربط النسخة بالقالب
   const { error: updateError } = await supabase
     .from('form_templates')
     .update({ current_version_id: version.id })
@@ -183,9 +235,9 @@ export async function createTemplate(
   return { id: data.id };
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Templates — Update
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function updateTemplate(
   id: string,
@@ -214,9 +266,9 @@ export async function updateTemplate(
   if (error) throw error;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Templates — Delete Check
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function canDeleteTemplate(
   id: string
@@ -224,7 +276,8 @@ export async function canDeleteTemplate(
   const { count, error } = await supabase
     .from('reports')
     .select('id', { count: 'exact', head: true })
-    .eq('template_id', id);
+    .eq('template_id', id)
+    .eq('is_deleted', false);
 
   if (error) throw error;
 
@@ -240,9 +293,9 @@ export async function canDeleteTemplate(
   };
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Templates — Soft Delete
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function softDeleteTemplate(id: string): Promise<void> {
   const { error } = await supabase
@@ -256,12 +309,12 @@ export async function softDeleteTemplate(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Templates — Cascade Delete
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function cascadeDeleteTemplate(id: string): Promise<void> {
-  // احذف التقارير أولاً
+  // 1. احذف التقارير
   const { error: reportsError } = await supabase
     .from('reports')
     .delete()
@@ -269,7 +322,22 @@ export async function cascadeDeleteTemplate(id: string): Promise<void> {
 
   if (reportsError) throw reportsError;
 
-  // احذف النسخ
+  // 2. احذف الحقول (عبر version_ids)
+  const { data: versions } = await supabase
+    .from('form_template_versions')
+    .select('id')
+    .eq('template_id', id);
+
+  if (versions && versions.length > 0) {
+    const versionIds = versions.map((v: any) => v.id);
+    const { error: fieldsError } = await supabase
+      .from('form_fields')
+      .delete()
+      .in('version_id', versionIds);
+    if (fieldsError) throw fieldsError;
+  }
+
+  // 3. احذف النسخ
   const { error: versionsError } = await supabase
     .from('form_template_versions')
     .delete()
@@ -277,7 +345,7 @@ export async function cascadeDeleteTemplate(id: string): Promise<void> {
 
   if (versionsError) throw versionsError;
 
-  // احذف القالب
+  // 4. احذف القالب
   const { error } = await supabase
     .from('form_templates')
     .delete()
@@ -286,9 +354,9 @@ export async function cascadeDeleteTemplate(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Fields — List
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function listFields(versionId: string): Promise<FormField[]> {
   const { data, error } = await supabase
@@ -301,15 +369,14 @@ export async function listFields(versionId: string): Promise<FormField[]> {
   return (data || []) as FormField[];
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Fields — Create
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function createField(
   versionId: string,
   payload: CreateFieldPayload
 ): Promise<{ id: string }> {
-  // تحقق من الكود
   const { count } = await supabase
     .from('form_fields')
     .select('id', { count: 'exact', head: true })
@@ -342,9 +409,9 @@ export async function createField(
   return { id: data.id };
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Fields — Update
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function updateField(
   id: string,
@@ -373,9 +440,9 @@ export async function updateField(
   if (error) throw error;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Fields — Delete
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function deleteField(id: string): Promise<void> {
   const { error } = await supabase.from('form_fields').delete().eq('id', id);
@@ -383,9 +450,9 @@ export async function deleteField(id: string): Promise<void> {
   if (error) throw error;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Fields — Reorder
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function reorderFields(
   updates: Array<{ id: string; order_index: number }>
@@ -397,9 +464,9 @@ export async function reorderFields(
   await Promise.all(promises);
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════
 // Lookups
-// ================================================
+// ═══════════════════════════════════════════════════════════
 
 export async function listRolesForSelect(): Promise<RoleOption[]> {
   const { data, error } = await supabase

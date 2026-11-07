@@ -1,3 +1,4 @@
+// src/lib/users-api.ts
 import { supabase } from './supabase';
 import type {
   User,
@@ -10,9 +11,25 @@ import type {
   UserActivity,
 } from '../types/users';
 
-// ================================================
-// Helper: Map row to UserWithRoles
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// Helper: Map user_entity_roles → UserRoleAssignment
+// ═══════════════════════════════════════════════════════════════════════
+
+function mapAssignment(uer: any): UserRoleAssignment {
+  return {
+    assignment_id: uer.id,
+    role_id: uer.role_id,
+    role_code: uer.roles?.code || '',
+    role_name: uer.roles?.name_ar || '',
+    entity_id: uer.entity_id,
+    entity_name: uer.entities?.name_ar || null,
+    entity_type: uer.entities?.entity_types?.code || null,
+    region_name: null, // ⭐ لا نستخدم self-join على entities (region_id ليس FK)
+    is_primary: uer.is_primary || false,
+    started_at: uer.started_at,
+    ended_at: uer.ended_at,
+  };
+}
 
 function mapUserRow(row: any): UserWithRoles {
   return {
@@ -21,7 +38,7 @@ function mapUserRow(row: any): UserWithRoles {
     username: row.username,
     email: row.email,
     full_name: row.full_name,
-    employee_number: row.employee_number || null, // ⭐ أضفنا هذا السطر
+    employee_number: row.employee_number || null,
     phone: row.phone,
     avatar_url: row.avatar_url,
     preferred_language: row.preferred_language,
@@ -31,47 +48,40 @@ function mapUserRow(row: any): UserWithRoles {
     metadata: row.metadata || {},
     created_at: row.created_at,
     updated_at: row.updated_at,
-    roles: (row.roles || [])
-      .filter((r: any) => r.assignment_id)
-      .map((r: any) => ({
-        assignment_id: r.assignment_id,
-        role_id: r.role_id,
-        role_code: r.role_code,
-        role_name: r.role_name,
-        entity_id: r.entity_id,
-        entity_name: r.entity_name,
-        entity_type: r.entity_type,
-        region_name: r.region_name,
-        is_primary: r.is_primary,
-        started_at: r.started_at,
-        ended_at: r.ended_at,
-      })),
+    roles: (row.user_entity_roles || [])
+      .filter((uer: any) => !uer.ended_at)
+      .map(mapAssignment),
   };
 }
 
-// ================================================
-// List Users
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// SELECT fragment موحّد — بدون self-join
+// ═══════════════════════════════════════════════════════════════════════
 
-export async function listUsers(filters: UsersFilters): Promise<UserWithRoles[]> {
-  let query = supabase
-    .from('users')
-    .select(`
-      id, auth_user_id, username, email, full_name, employee_number, phone, avatar_url,
-      preferred_language, timezone, is_active, last_login_at, metadata,
-      created_at, updated_at,
-      user_entity_roles!user_entity_roles_user_id_fkey (
-        id,
-        role_id,
-        entity_id,
-        is_primary,
-        started_at,
-        ended_at,
-        roles ( id, code, name_ar ),
-        entities ( id, name_ar, region_id, entity_types ( code ) )
-      )
-    `)
-    .order('full_name');
+const USER_SELECT = `
+  id, auth_user_id, username, email, full_name, employee_number, phone, avatar_url,
+  preferred_language, timezone, is_active, last_login_at, metadata,
+  created_at, updated_at,
+  user_entity_roles!user_entity_roles_user_id_fkey (
+    id,
+    role_id,
+    entity_id,
+    is_primary,
+    started_at,
+    ended_at,
+    roles ( id, code, name_ar ),
+    entities ( id, name_ar, region_id, entity_types ( code ) )
+  )
+`;
+
+// ═══════════════════════════════════════════════════════════════════════
+// List Users
+// ═══════════════════════════════════════════════════════════════════════
+
+export async function listUsers(
+  filters: UsersFilters
+): Promise<UserWithRoles[]> {
+  let query = supabase.from('users').select(USER_SELECT).order('full_name');
 
   if (filters.search) {
     query = query.or(
@@ -84,95 +94,66 @@ export async function listUsers(filters: UsersFilters): Promise<UserWithRoles[]>
   }
 
   const { data, error } = await query;
-  if (error) throw error;
+  if (error) {
+    console.error('❌ listUsers error:', {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    throw error;
+  }
 
-  let users = (data || []).map((row: any) => {
-    const roles = (row.user_entity_roles || [])
-      .filter((uer: any) => !uer.ended_at)
-      .map((uer: any) => ({
-        assignment_id: uer.id,
-        role_id: uer.role_id,
-        role_code: uer.roles?.code,
-        role_name: uer.roles?.name_ar,
-        entity_id: uer.entity_id,
-        entity_name: uer.entities?.name_ar,
-        entity_type: uer.entities?.entity_types?.code,
-        region_name: uer.entities?.region_id,
-        is_primary: uer.is_primary,
-        started_at: uer.started_at,
-        ended_at: uer.ended_at,
-      }));
+  let users = (data || []).map(mapUserRow);
 
-    return {
-      ...row,
-      roles,
-    } as UserWithRoles;
-  });
+  // ⭐ فلترة roleGroup (من التبويبات)
+  if (filters.roleGroup) {
+    users = users.filter((u) =>
+      u.roles.some((r) => r.role_code === filters.roleGroup)
+    );
+  }
 
+  // ⭐ فلترة roleCode (من الفلتر المتقدم)
   if (filters.roleCode) {
     users = users.filter((u) =>
       u.roles.some((r) => r.role_code === filters.roleCode)
     );
   }
 
+  if (filters.entityId) {
+    users = users.filter((u) =>
+      u.roles.some((r) => r.entity_id === filters.entityId)
+    );
+  }
+
   return users;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // Get Single User
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function getUserById(id: string): Promise<UserWithRoles | null> {
   const { data, error } = await supabase
     .from('users')
-    .select(`
-      id, auth_user_id, username, email, full_name, employee_number, phone, avatar_url,
-      preferred_language, timezone, is_active, last_login_at, metadata,
-      created_at, updated_at,
-      user_entity_roles!user_entity_roles_user_id_fkey (
-        id,
-        role_id,
-        entity_id,
-        is_primary,
-        started_at,
-        ended_at,
-        roles ( id, code, name_ar ),
-        entities ( id, name_ar, region_id, entity_types ( code ) )
-      )
-    `)
+    .select(USER_SELECT)
     .eq('id', id)
     .maybeSingle();
 
   if (error) throw error;
   if (!data) return null;
 
-  const roles: UserRoleAssignment[] = ((data as any).user_entity_roles || [])
-    .filter((uer: any) => !uer.ended_at)
-    .map((uer: any) => ({
-      assignment_id: uer.id,
-      role_id: uer.role_id,
-      role_code: uer.roles?.code,
-      role_name: uer.roles?.name_ar,
-      entity_id: uer.entity_id,
-      entity_name: uer.entities?.name_ar,
-      entity_type: uer.entities?.entity_types?.code,
-      region_name: uer.entities?.region_id,
-      is_primary: uer.is_primary,
-      started_at: uer.started_at,
-      ended_at: uer.ended_at,
-    }));
-
-  return {
-    ...data,
-    roles,
-  } as unknown as UserWithRoles; // ⭐ إضافة unknown لتجاوز مشكلة TypeScript
+  return mapUserRow(data);
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // Toggle Active
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
-export async function toggleUserActive(id: string, isActive: boolean): Promise<void> {
+export async function toggleUserActive(
+  id: string,
+  isActive: boolean
+): Promise<void> {
   const { error } = await supabase
     .from('users')
     .update({ is_active: isActive })
@@ -181,13 +162,17 @@ export async function toggleUserActive(id: string, isActive: boolean): Promise<v
   if (error) throw error;
 }
 
-// ================================================
-// Update User Profile (basic info only)
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// Update User Profile
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function updateUserProfile(
   userId: string,
-  data: { full_name?: string; phone?: string | null; employee_number?: string | null } // ⭐ أضفنا employee_number هنا
+  data: {
+    full_name?: string;
+    phone?: string | null;
+    employee_number?: string | null;
+  }
 ): Promise<void> {
   const { error } = await supabase
     .from('users')
@@ -197,9 +182,9 @@ export async function updateUserProfile(
   if (error) throw error;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // End Role Assignment
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function endRoleAssignment(assignmentId: string): Promise<void> {
   const { error } = await supabase
@@ -210,9 +195,9 @@ export async function endRoleAssignment(assignmentId: string): Promise<void> {
   if (error) throw error;
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // Add Role Assignment
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function addRoleAssignment(
   userId: string,
@@ -220,27 +205,27 @@ export async function addRoleAssignment(
   entityId: string,
   isPrimary: boolean = false
 ): Promise<void> {
-  const { error } = await supabase
-    .from('user_entity_roles')
-    .insert({
-      user_id: userId,
-      role_id: roleId,
-      entity_id: entityId,
-      started_at: new Date().toISOString().split('T')[0],
-      is_primary: isPrimary,
-    });
+  const { error } = await supabase.from('user_entity_roles').insert({
+    user_id: userId,
+    role_id: roleId,
+    entity_id: entityId,
+    started_at: new Date().toISOString().split('T')[0],
+    is_primary: isPrimary,
+  });
 
   if (error) throw error;
 }
 
-// ================================================
-// Get Roles (for dropdowns)
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// Roles (for dropdowns)
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function listRoles(): Promise<Role[]> {
   const { data, error } = await supabase
     .from('roles')
-    .select('id, code, name_ar, name_en, description, is_system, hierarchy_level, is_active')
+    .select(
+      'id, code, name_ar, name_en, description, is_system, hierarchy_level, is_active'
+    )
     .eq('is_active', true)
     .order('hierarchy_level', { ascending: false });
 
@@ -248,16 +233,16 @@ export async function listRoles(): Promise<Role[]> {
   return (data || []) as Role[];
 }
 
-// ================================================
-// Get Entities (for dropdowns)
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// Entities — بدون self-join على regions
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function listEntities(): Promise<Entity[]> {
   const { data, error } = await supabase
     .from('entities')
     .select(`
       id, code, name_ar, name_en, entity_type_id, parent_id, region_id, is_active,
-      entity_types ( code, name_ar )
+      entity_types!entity_type_id ( code, name_ar )
     `)
     .eq('is_active', true)
     .order('name_ar');
@@ -279,9 +264,9 @@ export async function listEntities(): Promise<Entity[]> {
   }));
 }
 
-// ================================================
-// Get Entities by Type (for filtered dropdowns)
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// Entities by Type (for filtered dropdowns)
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function listEntitiesByType(
   entityTypeCode: string
@@ -299,7 +284,7 @@ export async function listEntitiesByType(
     .from('entities')
     .select(`
       id, code, name_ar, name_en, entity_type_id, parent_id, region_id, is_active,
-      entity_types ( code, name_ar )
+      entity_types!entity_type_id ( code, name_ar )
     `)
     .eq('is_active', true)
     .eq('entity_type_id', typeData.id)
@@ -322,11 +307,13 @@ export async function listEntitiesByType(
   }));
 }
 
-// ================================================
-// Create User (uses edge function)
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
+// Create User (edge function)
+// ═══════════════════════════════════════════════════════════════════════
 
-export async function createUser(payload: CreateUserPayload): Promise<{ userId: string }> {
+export async function createUser(
+  payload: CreateUserPayload
+): Promise<{ userId: string }> {
   const { data: fnData, error: fnError } = await supabase.functions.invoke(
     'admin-create-user',
     {
@@ -336,6 +323,7 @@ export async function createUser(payload: CreateUserPayload): Promise<{ userId: 
         username: payload.username,
         full_name: payload.full_name,
         phone: payload.phone,
+        employee_number: payload.employee_number,
         role_id: payload.role_id,
         entity_id: payload.entity_id,
       },
@@ -348,9 +336,9 @@ export async function createUser(payload: CreateUserPayload): Promise<{ userId: 
   return { userId: fnData.user_id };
 }
 
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 // Get User Activity (audit_log)
-// ================================================
+// ═══════════════════════════════════════════════════════════════════════
 
 export async function getUserActivity(
   userId: string,

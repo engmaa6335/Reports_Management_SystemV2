@@ -1,3 +1,4 @@
+// src/App.tsx
 import { useEffect } from 'react';
 import {
   BrowserRouter,
@@ -13,8 +14,8 @@ import { useAuthStore } from './stores/auth-store';
 import { useEntityStore } from './stores/entity-store';
 import { useThemeStore } from './stores/theme-store';
 import { usePagesStore } from './stores/pages-store';
-import { usePermission } from './hooks/usePermission';
 import { ProtectedRoute } from './components/common/ProtectedRoute';
+import { RequirePermission } from './components/common/RequirePermission';
 import { MainLayout } from './components/layout/MainLayout';
 import { LoginPage } from './pages/auth/LoginPage';
 import { EntitySelectorPage } from './pages/entity/EntitySelectorPage';
@@ -32,6 +33,9 @@ import { EditAggregatePage } from './pages/aggregates/EditAggregatePage';
 import { SummariesListPage } from './pages/aggregate-summaries/SummariesListPage';
 import { CreateSummaryPage } from './pages/aggregate-summaries/CreateSummaryPage';
 import { ViewSummaryPage } from './pages/aggregate-summaries/ViewSummaryPage';
+
+// ⭐ Visit Plans
+import { VisitPlansPage } from './pages/plans/VisitPlansPage';
 
 import { Loading } from './components/ui/Loading';
 import { NotificationsPage } from './pages/notifications/NotificationsPage';
@@ -82,31 +86,7 @@ import ResetUserThemesPage from './pages/settings/ResetUserThemesPage';
 import ProfilePage from './pages/profile/ProfilePage';
 
 // ═══════════════════════════════════════════════════════════
-// ⭐ حماية المسارات (توجيه فوري)
-// ═══════════════════════════════════════════════════════════
-
-function RequirePermission({
-  permission,
-  children,
-}: {
-  permission: string;
-  children: React.ReactNode;
-}) {
-  const { allowed, loading } = usePermission(permission);
-
-  if (loading) {
-    return <Loading fullScreen message="جاري التحقق من الصلاحيات..." />;
-  }
-
-  if (!allowed) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  return <>{children}</>;
-}
-
-// ═══════════════════════════════════════════════════════════
-// AdminRedirect
+// AdminRedirect — توافق مع الروابط القديمة /admin/*
 // ═══════════════════════════════════════════════════════════
 
 function AdminRedirect() {
@@ -115,6 +95,10 @@ function AdminRedirect() {
   const target = `/settings${subPath}${location.search}${location.hash}`;
   return <Navigate to={target} replace />;
 }
+
+// ═══════════════════════════════════════════════════════════
+// App
+// ═══════════════════════════════════════════════════════════
 
 function App() {
   const { initialize, initialized, user } = useAuthStore();
@@ -127,7 +111,6 @@ function App() {
   const initTheme = useThemeStore((s) => s.init);
   const { i18n } = useTranslation();
 
-  // ⭐ Pages store
   const loadPages = usePagesStore((s) => s.loadPages);
   const clearPages = usePagesStore((s) => s.clearPages);
   const pagesInitialized = usePagesStore((s) => s.initialized);
@@ -142,7 +125,6 @@ function App() {
     }
   }, [user, entitiesInitialized, loadUserEntities]);
 
-  // ⭐ Load pages after login (for dynamic sidebar)
   useEffect(() => {
     if (user?.id && !pagesInitialized) {
       loadPages();
@@ -221,7 +203,7 @@ function App() {
           <Route path="/aggregates/:id" element={<ViewAggregatePage />} />
           <Route path="/aggregates/:id/edit" element={<EditAggregatePage />} />
 
-          {/* ⭐ Aggregate Summaries */}
+          {/* Aggregate Summaries */}
           <Route
             path="/aggregate-summaries"
             element={
@@ -247,10 +229,13 @@ function App() {
             }
           />
 
-          {/* ⭐ Profile */}
+          {/* Visit Plans */}
+          <Route path="/plans" element={<VisitPlansPage />} />
+
+          {/* Profile */}
           <Route path="/profile" element={<ProfilePage />} />
 
-          {/* ⭐ Settings (محمي بالكامل) */}
+          {/* Settings (محمي بالكامل) */}
           <Route
             path="/settings"
             element={
@@ -261,7 +246,7 @@ function App() {
           >
             <Route index element={<SettingsPage />} />
 
-            {/* ⭐ Templates */}
+            {/* Templates */}
             <Route
               path="templates"
               element={
@@ -311,7 +296,7 @@ function App() {
               }
             />
 
-            {/* ⭐ Aggregate Summaries Settings */}
+            {/* Aggregate Summaries Settings */}
             <Route
               path="aggregate-summaries"
               element={
@@ -321,7 +306,7 @@ function App() {
               }
             />
 
-            {/* ⭐ Notifications Admin */}
+            {/* Notifications Admin */}
             <Route
               path="notifications"
               element={
@@ -343,7 +328,7 @@ function App() {
               <Route path="send-manual" element={<SendManualNotificationPage />} />
             </Route>
 
-            {/* ⭐ Users */}
+            {/* Users */}
             <Route
               path="users"
               element={
@@ -369,7 +354,7 @@ function App() {
               }
             />
 
-            {/* ⭐ Entities */}
+            {/* Entities */}
             <Route
               path="entities"
               element={
@@ -403,7 +388,7 @@ function App() {
               }
             />
 
-            {/* ⭐ Permissions & Roles */}
+            {/* Permissions & Roles */}
             <Route
               path="permissions"
               element={
@@ -437,7 +422,7 @@ function App() {
               }
             />
 
-            {/* ⭐ Themes */}
+            {/* Themes */}
             <Route
               path="themes"
               element={

@@ -1,3 +1,4 @@
+// src/pages/settings/SettingsLayout.tsx
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -9,9 +10,10 @@ import {
   Shield,
   Palette,
   ChevronLeft,
+  Lock,
 } from 'lucide-react';
-import { useEntityStore } from '../../stores/entity-store';
 import { usePermission } from '../../hooks/usePermission';
+import { Button } from '../../components/ui';
 
 // ═══════════════════════════════════════════════════════════
 // Item Info Map
@@ -76,23 +78,20 @@ const SETTINGS_ITEMS: ItemInfo[] = [
 
 export function SettingsLayout() {
   const { t } = useTranslation();
-  const { activeEntity } = useEntityStore();
   const location = useLocation();
   const navigate = useNavigate();
-  
-  const isTechSupport = activeEntity?.roleCode === 'tech_support';
-  
-  // ⭐ فحص الصلاحية العامة للإعدادات
-  const { allowed: canAccessSettings, loading: checkingSettings } = usePermission('settings.view');
 
-  // ⭐ احصل على معلومات الصفحة الحالية
+  // ⭐ فحص صلاحية الإعدادات العامة (يعتمد كلياً على RPC + overrides)
+  const { allowed: canAccessSettings, loading: checkingSettings } =
+    usePermission('settings.view');
+
   const currentItem = SETTINGS_ITEMS.find(
     (item) =>
       location.pathname === item.path ||
       location.pathname.startsWith(item.path + '/')
   );
 
-  // ⭐ إذا لم يملك صلاحية الإعدادات، لا تعرض شيئاً (سيتم توجيهه من App.tsx)
+  // ⭐ Loading
   if (checkingSettings) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -101,22 +100,39 @@ export function SettingsLayout() {
     );
   }
 
-  if (!canAccessSettings && !isTechSupport) {
+  // ⭐ منع الوصول كلياً — لا bypass لأي دور
+  if (!canAccessSettings) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-12 text-center">
-        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-bg-secondary text-text-muted mb-4">
-          <Settings className="w-10 h-10" />
+      <div className="max-w-md mx-auto mt-8">
+        <div className="bg-surface border border-border rounded-xl p-8 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-danger/10 text-danger mb-4">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-text mb-2">
+            لا تملك صلاحية الوصول
+          </h2>
+          <p className="text-text-secondary text-sm mb-1">
+            هذه الصفحة تتطلب الصلاحية:
+          </p>
+          <code className="inline-block px-3 py-1 rounded bg-bg-secondary text-primary font-mono text-sm mb-4">
+            settings.view
+          </code>
+          <p className="text-text-muted text-xs mb-6">
+            تواصل مع الدعم الفني لمنحك الصلاحية (فردياً عبر الصلاحيات الفردية،
+            أو عبر دورك).
+          </p>
+          <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+            العودة للوحة التحكم
+          </Button>
         </div>
-        <h2 className="text-xl font-bold text-text mb-2">لا تملك صلاحية الوصول</h2>
-        <p className="text-text-secondary text-sm">
-          ليس لديك صلاحية للوصول إلى الإعدادات.
-        </p>
       </div>
     );
   }
 
   const title = currentItem ? t(currentItem.titleKey) : t('sidebar.settings');
-  const subtitle = currentItem ? t(currentItem.subtitleKey) : t('settings.subtitle');
+  const subtitle = currentItem
+    ? t(currentItem.subtitleKey)
+    : t('settings.subtitle');
   const icon = currentItem?.icon || <Settings className="w-6 h-6" />;
 
   return (
@@ -129,7 +145,6 @@ export function SettingsLayout() {
           </div>
 
           <div className="min-w-0 flex-1">
-            {/* Breadcrumb */}
             <div className="flex items-center gap-1.5 text-xs text-text-muted mb-1">
               <span>{t('sidebar.settings')}</span>
               {currentItem && (
@@ -140,9 +155,7 @@ export function SettingsLayout() {
               )}
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-bold text-text">
-              {title}
-            </h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-text">{title}</h1>
             <p className="text-text-secondary text-xs sm:text-sm mt-1">
               {subtitle}
             </p>
@@ -150,7 +163,6 @@ export function SettingsLayout() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="min-w-0">
         <Outlet />
       </div>
