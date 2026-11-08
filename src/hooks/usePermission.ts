@@ -1,6 +1,7 @@
 // src/hooks/usePermission.ts
 // ═══════════════════════════════════════════════════════════════════════
-// usePermission — يمرّر activeEntity تلقائياً (إلا إذا مُرِّر صراحةً)
+// usePermission — يمرّر entityId فقط إذا مُرِّر صراحةً
+// ⭐ لا يستخدم activeEntity افتراضياً (لتجنب كسر الإعدادات)
 // ═══════════════════════════════════════════════════════════════════════
 
 import { useEffect, useState, useRef } from 'react';
@@ -9,22 +10,17 @@ import {
   usePermissionsRefresh,
   initPermissionsRealtime,
 } from '../stores/permissions-refresh-store';
-import { useEntityStore } from '../stores/entity-store';
 
 export function usePermission(code: string, entityId?: string | null) {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const version = usePermissionsRefresh((s) => s.version);
   const initRef = useRef(false);
 
-  // ⭐ احصل على activeEntity من store
-  const activeEntityId = useEntityStore((s) => s.activeEntity?.entityId);
+  // ⭐ لا نستخدم activeEntity افتراضياً
+  // إذا مُرِّر entityId صراحةً → استخدمه (حتى لو null)
+  // وإلا → null (aggregate mode)
+  const finalEntityId = entityId !== undefined ? entityId : null;
 
-  // ⭐ إذا مُرِّر entityId صراحةً (حتى لو null) → استخدمه
-  //    وإلا → استخدم activeEntity
-  const finalEntityId =
-    entityId !== undefined ? entityId : activeEntityId ?? null;
-
-  // init مرة واحدة
   useEffect(() => {
     if (!initRef.current) {
       initRef.current = true;
@@ -32,7 +28,6 @@ export function usePermission(code: string, entityId?: string | null) {
     }
   }, []);
 
-  // إعادة الفحص عند تغيير code / entity / version
   useEffect(() => {
     let cancelled = false;
 

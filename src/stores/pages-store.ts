@@ -1,8 +1,4 @@
 // src/stores/pages-store.ts
-// ═══════════════════════════════════════════════════════════
-// Pages Store — dynamic page registry + user access (entity-aware)
-// ═══════════════════════════════════════════════════════════
-
 import { create } from 'zustand';
 import { getUserAccessiblePages } from '../lib/pages-api';
 import type { UserAccessiblePage } from '../types/pages';
@@ -31,14 +27,10 @@ export const usePagesStore = create<PagesState>((set, get) => ({
   error: null,
   currentEntityId: null,
 
-  // ═══════════════════════════════════════════
-  // Load
-  // ═══════════════════════════════════════════
-
   loadPages: async (entityId?: string | null) => {
     if (get().loading) return;
 
-    // ⭐ احصل على activeEntity إذا لم يُمرَّر
+    // ⭐ نستخدم activeEntity — لكن الدالة تتجاهله لصفحات settings
     const targetEntityId =
       entityId !== undefined
         ? entityId
@@ -89,10 +81,6 @@ export const usePagesStore = create<PagesState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
-
-  // ═══════════════════════════════════════════
-  // Helpers
-  // ═══════════════════════════════════════════
 
   hasAccess: (pageCode, action = 'view') => {
     const page = get().pages.find((p) => p.page_code === pageCode);
