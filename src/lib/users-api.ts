@@ -15,7 +15,11 @@ import type {
 // Helper: Map user_entity_roles → UserRoleAssignment
 // ═══════════════════════════════════════════════════════════════════════
 
-function mapAssignment(uer: any): UserRoleAssignment {
+function mapAssignment(
+  uer: any,
+  regionsMap?: Map<string, string>
+): UserRoleAssignment {
+  const regionId = uer.entities?.region_id || null;
   return {
     assignment_id: uer.id,
     role_id: uer.role_id,
@@ -24,14 +28,17 @@ function mapAssignment(uer: any): UserRoleAssignment {
     entity_id: uer.entity_id,
     entity_name: uer.entities?.name_ar || null,
     entity_type: uer.entities?.entity_types?.code || null,
-    region_name: null, // ⭐ لا نستخدم self-join على entities (region_id ليس FK)
+    region_name: regionId && regionsMap ? regionsMap.get(regionId) || null : null,
     is_primary: uer.is_primary || false,
     started_at: uer.started_at,
     ended_at: uer.ended_at,
   };
 }
 
-function mapUserRow(row: any): UserWithRoles {
+function mapUserRow(
+  row: any,
+  regionsMap?: Map<string, string>
+): UserWithRoles {
   return {
     id: row.id,
     auth_user_id: row.auth_user_id,
@@ -50,12 +57,12 @@ function mapUserRow(row: any): UserWithRoles {
     updated_at: row.updated_at,
     roles: (row.user_entity_roles || [])
       .filter((uer: any) => !uer.ended_at)
-      .map(mapAssignment),
+      .map((uer: any) => mapAssignment(uer, regionsMap)),
   };
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// SELECT fragment موحّد — بدون self-join
+// SELECT fragment موحّد — بدون self-join على entities
 // ═══════════════════════════════════════════════════════════════════════
 
 const USER_SELECT = `
@@ -70,9 +77,31 @@ const USER_SELECT = `
     started_at,
     ended_at,
     roles ( id, code, name_ar ),
-    entities ( id, name_ar, region_id, entity_types ( code ) )
+    entities (
+      id,
+      name_ar,
+      region_id,
+      entity_types!entities_entity_type_id_fkey ( code )
+    )
   )
 `;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Helper: جلب regions كـ Map
+// ═══════════════════════════════════════════════════════════════════════
+
+async function loadRegionsMap(): Promise<Map<string, string>> {
+  const { data, error } = await supabase
+    .from('regions')
+    .select('id, name_ar');
+
+  if (error) {
+    console.warn('⚠️ loadRegionsMap failed (non-fatal):', error.message);
+    return new Map();
+  }
+
+  return new Map((data || []).map((r: any) => [r.id, r.name_ar]));
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // List Users
@@ -93,7 +122,11 @@ export async function listUsers(
     query = query.eq('is_active', filters.isActive);
   }
 
-  const { data, error } = await query;
+  const [{ data, error }, regionsMap] = await Promise.all([
+    query,
+    loadRegionsMap(),
+  ]);
+
   if (error) {
     console.error('❌ listUsers error:', {
       code: error.code,
@@ -104,7 +137,7 @@ export async function listUsers(
     throw error;
   }
 
-  let users = (data || []).map(mapUserRow);
+  let users = (data || []).map((row: any) => mapUserRow(row, regionsMap));
 
   // ⭐ فلترة roleGroup (من التبويبات)
   if (filters.roleGroup) {
@@ -134,16 +167,15 @@ export async function listUsers(
 // ═══════════════════════════════════════════════════════════════════════
 
 export async function getUserById(id: string): Promise<UserWithRoles | null> {
-  const { data, error } = await supabase
-    .from('users')
-    .select(USER_SELECT)
-    .eq('id', id)
-    .maybeSingle();
+  const [{ data, error }, regionsMap] = await Promise.all([
+    supabase.from('users').select(USER_SELECT).eq('id', id).maybeSingle(),
+    loadRegionsMap(),
+  ]);
 
   if (error) throw error;
   if (!data) return null;
 
-  return mapUserRow(data);
+  return mapUserRow(data, regionsMap);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -234,18 +266,21 @@ export async function listRoles(): Promise<Role[]> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Entities — بدون self-join على regions
+// Entities — مع تلميح FK صريح
 // ═══════════════════════════════════════════════════════════════════════
 
 export async function listEntities(): Promise<Entity[]> {
-  const { data, error } = await supabase
-    .from('entities')
-    .select(`
-      id, code, name_ar, name_en, entity_type_id, parent_id, region_id, is_active,
-      entity_types!entity_type_id ( code, name_ar )
-    `)
-    .eq('is_active', true)
-    .order('name_ar');
+  const [{ data, error }, regionsMap] = await Promise.all([
+    supabase
+      .from('entities')
+      .select(`
+        id, code, name_ar, name_en, entity_type_id, parent_id, region_id, is_active,
+        entity_types!entities_entity_type_id_fkey ( code, name_ar )
+      `)
+      .eq('is_active', true)
+      .order('name_ar'),
+    loadRegionsMap(),
+  ]);
 
   if (error) throw error;
 
@@ -259,7 +294,7 @@ export async function listEntities(): Promise<Entity[]> {
     entity_type_name: e.entity_types?.name_ar || null,
     parent_id: e.parent_id,
     region_id: e.region_id,
-    region_name: null,
+    region_name: e.region_id ? regionsMap.get(e.region_id) || null : null,
     is_active: e.is_active,
   }));
 }
@@ -280,15 +315,18 @@ export async function listEntitiesByType(
   if (typeError) throw typeError;
   if (!typeData) return [];
 
-  const { data, error } = await supabase
-    .from('entities')
-    .select(`
-      id, code, name_ar, name_en, entity_type_id, parent_id, region_id, is_active,
-      entity_types!entity_type_id ( code, name_ar )
-    `)
-    .eq('is_active', true)
-    .eq('entity_type_id', typeData.id)
-    .order('name_ar');
+  const [{ data, error }, regionsMap] = await Promise.all([
+    supabase
+      .from('entities')
+      .select(`
+        id, code, name_ar, name_en, entity_type_id, parent_id, region_id, is_active,
+        entity_types!entities_entity_type_id_fkey ( code, name_ar )
+      `)
+      .eq('is_active', true)
+      .eq('entity_type_id', typeData.id)
+      .order('name_ar'),
+    loadRegionsMap(),
+  ]);
 
   if (error) throw error;
 
@@ -302,7 +340,7 @@ export async function listEntitiesByType(
     entity_type_name: e.entity_types?.name_ar || null,
     parent_id: e.parent_id,
     region_id: e.region_id,
-    region_name: null,
+    region_name: e.region_id ? regionsMap.get(e.region_id) || null : null,
     is_active: e.is_active,
   }));
 }
