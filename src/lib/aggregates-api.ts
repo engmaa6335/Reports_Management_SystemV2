@@ -83,7 +83,6 @@ export async function listAvailableAggregateTemplates(
     )
   );
 
-  // ⭐ نضيف name_en للقوالب
   let query = supabase
     .from('aggregate_templates')
     .select(`
@@ -138,7 +137,7 @@ export async function getAggregateTemplateById(
 }
 
 // ═══════════════════════════════════════════════════════════
-// ⭐ Fetch Visits — مع إصلاحات
+// Fetch Visits — مع إصلاحات
 // ═══════════════════════════════════════════════════════════
 
 interface FetchVisitsParams {
@@ -167,8 +166,6 @@ export async function fetchVisitsInPeriod({
     reportType,
   });
 
-  // ⭐ الإصلاح 1: نبحث في region_id أو entity_id (يقبل كلا الحالتين)
-  // ⭐ الإصلاح 2: حذف created_by ليشمل زيارات الجميع
   const { data: reports, error } = await supabase
     .from('reports')
     .select('id, data, entity_id, region_id, created_at')
@@ -192,7 +189,6 @@ export async function fetchVisitsInPeriod({
     `📄 Found ${reports.length} reports (before period filter)`
   );
 
-  // فلترة محلية على visit_date
   const filtered = reports.filter((r) => {
     const visitDate = r.data?.visit_date;
     if (typeof visitDate !== 'string') return false;
@@ -326,7 +322,7 @@ export async function findExistingAggregate({
 }
 
 // ═══════════════════════════════════════════════════════════
-// List Reports
+// List Reports — ✅ بعد الإصلاح (حذف فلتر created_by)
 // ═══════════════════════════════════════════════════════════
 
 export async function listUserAggregates(
@@ -334,6 +330,7 @@ export async function listUserAggregates(
   entityId: string,
   filters?: Partial<AggregateFilters>
 ): Promise<AggregateReportWithRelations[]> {
+  // ⚠️ إصلاح: حذف .eq('created_by', userId) — RLS تتكفل بالتصفية
   const { data, error } = await supabase
     .from('aggregate_reports')
     .select(`
@@ -343,7 +340,6 @@ export async function listUserAggregates(
       aggregate_template:aggregate_templates ( id, code, name_ar, name_en, aggregate_type, calculations )
     `)
     .eq('is_deleted', false)
-    .eq('created_by', userId)
     .order('created_at', { ascending: false })
     .limit(200);
 
@@ -396,7 +392,7 @@ export async function getAggregateById(
 }
 
 // ═══════════════════════════════════════════════════════════
-// Create
+// Create — ✅ بعد الإصلاح (region_id مضمون)
 // ═══════════════════════════════════════════════════════════
 
 export async function createSpecialistAggregate(
@@ -432,7 +428,8 @@ export async function createSpecialistAggregate(
     .insert({
       aggregate_template_id: input.aggregateTemplateId,
       aggregate_type: input.metadata.report_type,
-      region_id: input.regionId,
+      // ✅ إصلاح: region_id مضمون (إما regionId أو entityId)
+      region_id: input.regionId || input.entityId,
       entity_id: input.entityId,
       period_type: input.periodType,
       period_start: input.periodStart,

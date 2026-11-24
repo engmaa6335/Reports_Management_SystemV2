@@ -327,13 +327,13 @@ export const useAggregatesStore = create<AggregatesState>((set, get) => ({
       }
 
       const visits = await api.fetchVisitsInPeriod({
-          sourceTemplateId,
-          periodStart: period.start,
-          periodEnd: period.end,
-          userId,
-          entityId,          // ⭐ يجب أن يكون موجوداً
-          reportType,
-        });
+        sourceTemplateId,
+        periodStart: period.start,
+        periodEnd: period.end,
+        userId,
+        entityId,
+        reportType,
+      });
 
       set({
         visits,
@@ -507,7 +507,7 @@ export const useAggregatesStore = create<AggregatesState>((set, get) => ({
   },
 
   // ═══════════════════════════════════════════
-  // Save
+  // Save — ✅ بعد الإصلاح (regionId = entityId)
   // ═══════════════════════════════════════════
 
   saveAggregate: async ({
@@ -570,7 +570,8 @@ export const useAggregatesStore = create<AggregatesState>((set, get) => ({
         const input: CreateSpecialistAggregateInput = {
           aggregateTemplateId: selectedTemplate.id,
           entityId,
-          regionId: null,
+          // ✅ إصلاح: regionId = entityId (لأن الكيان الحالي هو المنطقة)
+          regionId: entityId,
           periodType,
           periodStart: calculatedPeriod.start,
           periodEnd: calculatedPeriod.end,
