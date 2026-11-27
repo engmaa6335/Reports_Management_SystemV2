@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MapPin,
+  School,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/auth-store';
 import { useEntityStore } from '../../stores/entity-store';
@@ -29,6 +30,48 @@ import { supabase } from '../../lib/supabase';
 // ================================================
 // Helpers
 // ================================================
+
+type PeriodKey = 'this_week' | 'last_week' | 'two_weeks_ago' | 'custom' | 'all';
+
+function getPeriodRange(period: PeriodKey, customStart: string, customEnd: string) {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const daysToSaturday = (dayOfWeek + 1) % 7;
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - daysToSaturday);
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  let start: Date, end: Date = new Date(today);
+
+  switch (period) {
+    case 'this_week':
+      start = new Date(startOfWeek);
+      break;
+    case 'last_week':
+      start = new Date(startOfWeek);
+      start.setDate(start.getDate() - 7);
+      end = new Date(startOfWeek);
+      end.setDate(end.getDate() - 1);
+      break;
+    case 'two_weeks_ago':
+      start = new Date(startOfWeek);
+      start.setDate(start.getDate() - 14);
+      end = new Date(startOfWeek);
+      end.setDate(end.getDate() - 8);
+      break;
+    case 'custom':
+      start = customStart ? new Date(customStart) : startOfWeek;
+      if (customEnd) end = new Date(customEnd);
+      break;
+    default:
+      start = new Date(startOfWeek);
+  }
+  
+  // ضبط نهاية اليوم لضمان شمول التقارير المسجلة في نفس اليوم
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
+}
 
 function formatDate(dateStr: string | null, lang: string): string {
   if (!dateStr) return '—';
@@ -49,35 +92,15 @@ function getStatusBadge(
   t: (key: string) => string
 ): { label: string; className: string } {
   const badges: Record<string, { label: string; className: string }> = {
-    active: {
-      label: t('reports_page.status_active'),
-      className: 'bg-success/10 text-success',
-    },
-    updated: {
-      label: t('reports_page.status_updated'),
-      className: 'bg-info/10 text-info',
-    },
-    aggregated: {
-      label: t('reports_page.status_aggregated'),
-      className: 'bg-warning/10 text-warning',
-    },
-    archived: {
-      label: t('reports_page.status_archived'),
-      className: 'bg-text-muted/10 text-text-muted',
-    },
+    active: { label: t('reports_page.status_active'), className: 'bg-success/10 text-success' },
+    updated: { label: t('reports_page.status_updated'), className: 'bg-info/10 text-info' },
+    aggregated: { label: t('reports_page.status_aggregated'), className: 'bg-warning/10 text-warning' },
+    archived: { label: t('reports_page.status_archived'), className: 'bg-text-muted/10 text-text-muted' },
   };
-  return (
-    badges[status] || {
-      label: status,
-      className: 'bg-bg-secondary text-text',
-    }
-  );
+  return badges[status] || { label: status, className: 'bg-bg-secondary text-text' };
 }
 
-function getPeriodLabel(
-  periodType: string | null,
-  t: (key: string) => string
-): string {
+function getPeriodLabel(periodType: string | null, t: (key: string) => string): string {
   if (!periodType) return '—';
   const labels: Record<string, string> = {
     weekly: t('reports_page.period_weekly'),
@@ -88,15 +111,11 @@ function getPeriodLabel(
   return labels[periodType] || periodType;
 }
 
-function getTemplateKind(
-  templateCode: string | undefined
-): 'tls' | 'rl' | 'other' {
+function getTemplateKind(templateCode: string | undefined): 'tls' | 'rl' | 'other' {
   if (!templateCode) return 'other';
   const code = String(templateCode).toLowerCase();
   if (code.includes('tls')) return 'tls';
-  if (code.includes('rl') || code.includes('r_l') || code.includes('r-l')) {
-    return 'rl';
-  }
+  if (code.includes('rl') || code.includes('r_l') || code.includes('r-l')) return 'rl';
   return 'other';
 }
 
@@ -124,20 +143,22 @@ export function ReportsListPage() {
   const { activeEntity } = useEntityStore();
   const {
     reports,
-    stats,
     loading,
     error,
     loadReports,
-    filters,
-    setFilters,
   } = useReportsStore();
-  const { templates, loading: templatesLoading, loadAvailableTemplates } =
-    useTemplatesStore();
+  const { templates, loading: templatesLoading, loadAvailableTemplates } = useTemplatesStore();
 
+  const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [regionFilter, setRegionFilter] = useState<string>('all');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // ⭐ الفلتر الافتراضي "هذا الأسبوع"
+  const [periodFilter, setPeriodFilter] = useState<PeriodKey>('this_week');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
 
   const [hasCreatePermission, setHasCreatePermission] = useState(false);
   const [checkingPermissions, setCheckingPermissions] = useState(true);
@@ -146,9 +167,8 @@ export function ReportsListPage() {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  const canViewAll = ['tech_support', 'edc_viewer', 'qa_chief'].includes(
-    activeEntity?.roleCode || ''
-  );
+  const canViewAll = ['tech_support', 'edc_viewer', 'qa_chief'].includes(activeEntity?.roleCode || '');
+  const isTechSupport = activeEntity?.roleCode === 'tech_support';
   const noTemplates = !templatesLoading && templates.length === 0;
 
   // ═══════════════════════════════════════════════════════════
@@ -161,85 +181,42 @@ export function ReportsListPage() {
 
     const checkPermission = async () => {
       if (!activeEntity?.roleCode) return;
-
       try {
-        const { data, error } = await supabase.rpc(
-          'check_user_can_create_report'
-        );
-
+        const { data, error } = await supabase.rpc('check_user_can_create_report');
         if (!isMounted) return;
-
-        if (error) {
-          console.error('Error checking permission:', error);
-          setHasCreatePermission(false);
-        } else {
-          setHasCreatePermission(data === true);
-        }
+        if (error) setHasCreatePermission(false);
+        else setHasCreatePermission(data === true);
       } catch (err) {
-        if (!isMounted) return;
-        console.error(err);
-        setHasCreatePermission(false);
+        if (isMounted) setHasCreatePermission(false);
       } finally {
-        if (isMounted) {
-          setCheckingPermissions(false);
-        }
+        if (isMounted) setCheckingPermissions(false);
       }
     };
 
     const init = async () => {
       setCheckingPermissions(true);
       await checkPermission();
-
       if (!isMounted) return;
 
-      const channelName = `reports_permissions_${Date.now()}_${Math.random()
-        .toString(36)
-        .slice(2, 9)}`;
-
+      const channelName = `reports_permissions_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
       try {
         subscription = supabase
           .channel(channelName)
-          .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'user_entity_roles' },
-            () => {
-              if (isMounted) {
-                console.log('🔄 User roles changed, re-checking permission...');
-                checkPermission();
-              }
-            }
-          )
-          .on(
-            'postgres_changes',
-            { event: '*', schema: 'public', table: 'role_permissions' },
-            () => {
-              if (isMounted) {
-                console.log('🔄 Role permissions changed, re-checking permission...');
-                checkPermission();
-              }
-            }
-          )
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'user_entity_roles' }, () => {
+            if (isMounted) checkPermission();
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'role_permissions' }, () => {
+            if (isMounted) checkPermission();
+          })
           .subscribe();
-      } catch (err) {
-        console.warn('⚠️ Realtime subscription failed:', err);
-      }
-
-      if (isMounted) {
-        intervalId = setInterval(checkPermission, 10000);
-      }
+      } catch (err) {}
+      if (isMounted) intervalId = setInterval(checkPermission, 10000);
     };
 
     init();
-
     return () => {
       isMounted = false;
-      if (subscription) {
-        try {
-          supabase.removeChannel(subscription);
-        } catch (err) {
-          // تجاهل
-        }
-      }
+      if (subscription) try { supabase.removeChannel(subscription); } catch (e) {}
       if (intervalId) clearInterval(intervalId);
     };
   }, [activeEntity?.roleCode, activeEntity?.entityId, user?.id]);
@@ -247,80 +224,51 @@ export function ReportsListPage() {
   // ═══════════════════════════════════════════════════════════
   // Load data
   // ═══════════════════════════════════════════════════════════
-
   useEffect(() => {
-    if (user && activeEntity) {
-      loadReports(user.id, activeEntity.entityId);
-    }
+    if (user && activeEntity) loadReports(user.id, activeEntity.entityId);
   }, [user, activeEntity, loadReports]);
 
   useEffect(() => {
-    if (activeEntity?.roleCode) {
-      loadAvailableTemplates(activeEntity.roleCode);
-    }
+    if (activeEntity?.roleCode) loadAvailableTemplates(activeEntity.roleCode);
   }, [activeEntity?.roleCode, activeEntity?.entityId, loadAvailableTemplates]);
 
+  // إعادة تعيين فلتر الحالة للمستخدمين العاديين لمنع أي تعارض
+  useEffect(() => {
+    if (!isTechSupport) setStatusFilter('all');
+  }, [isTechSupport]);
+
   // ═══════════════════════════════════════════════════════════
-  // Derived data
+  // Derived data (Local Filtering)
   // ═══════════════════════════════════════════════════════════
 
   const entityColumnLabel = useMemo(() => {
     const role = activeEntity?.roleCode;
-    if (role === 'tls_manager') {
-      return i18n.language === 'ar' ? 'المركز' : 'Center';
-    }
-    if (role === 'school_manager') {
-      return i18n.language === 'ar' ? 'المدرسة' : 'School';
-    }
-
-    if (
-      activeEntity?.regionModes?.includes('tls') &&
-      !activeEntity?.regionModes?.includes('rl')
-    ) {
-      return i18n.language === 'ar' ? 'المركز' : 'Center';
-    }
-    if (
-      activeEntity?.regionModes?.includes('rl') &&
-      !activeEntity?.regionModes?.includes('tls')
-    ) {
-      return i18n.language === 'ar' ? 'المدرسة' : 'School';
-    }
-
+    if (role === 'tls_manager') return i18n.language === 'ar' ? 'المركز' : 'Center';
+    if (role === 'school_manager') return i18n.language === 'ar' ? 'المدرسة' : 'School';
+    if (activeEntity?.regionModes?.includes('tls') && !activeEntity?.regionModes?.includes('rl')) return i18n.language === 'ar' ? 'المركز' : 'Center';
+    if (activeEntity?.regionModes?.includes('rl') && !activeEntity?.regionModes?.includes('tls')) return i18n.language === 'ar' ? 'المدرسة' : 'School';
     return i18n.language === 'ar' ? 'المدرسة / المركز' : 'School / Center';
   }, [activeEntity?.roleCode, activeEntity?.regionModes, i18n.language]);
 
-  // ⭐ استخراج المناطق الفريدة من التقارير (للفلترة)
   const uniqueRegions = useMemo(() => {
     const map = new Map<string, string>();
     reports.forEach((r) => {
       const regionName = (r as any).region?.name_ar;
       const regionId = r.region_id;
-      if (regionId && regionName) {
-        map.set(regionId, regionName);
-      }
+      if (regionId && regionName) map.set(regionId, regionName);
     });
     return Array.from(map.entries()).map(([id, name_ar]) => ({ id, name_ar }));
   }, [reports]);
 
-  const filteredReports = useMemo(() => {
+  // ⭐ 1. الفلترة الأساسية (تعتمد حصرياً على created_at لتطابق لوحة التحكم)
+  const reportsBeforeStatusFilter = useMemo(() => {
     let result = reports;
 
-    if (statusFilter !== 'all') {
-      result = result.filter((r) => r.status === statusFilter);
-    }
+    if (kindFilter !== 'all') result = result.filter((r) => getTemplateKind(r.template?.code) === kindFilter);
+    if (regionFilter !== 'all') result = result.filter((r) => r.region_id === regionFilter);
 
-    if (kindFilter !== 'all') {
-      result = result.filter(
-        (r) => getTemplateKind(r.template?.code) === kindFilter
-      );
-    }
-
-    if (regionFilter !== 'all') {
-      result = result.filter((r) => r.region_id === regionFilter);
-    }
-
-    if (filters.searchQuery) {
-      const q = filters.searchQuery.toLowerCase();
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
       result = result.filter(
         (r) =>
           r.template?.name_ar?.toLowerCase().includes(q) ||
@@ -330,85 +278,75 @@ export function ReportsListPage() {
       );
     }
 
-    if (filters.periodStart) {
+    // فلترة الفترة (محلياً بناءً على created_at)
+    if (periodFilter !== 'all') {
+      const { start, end } = getPeriodRange(periodFilter, customStart, customEnd);
       result = result.filter((r) => {
-        const d = r.period_start || r.created_at;
-        return d && d >= filters.periodStart!;
-      });
-    }
-
-    if (filters.periodEnd) {
-      result = result.filter((r) => {
-        const d = r.period_start || r.created_at;
-        return d && d <= filters.periodEnd!;
+        if (!r.created_at) return false;
+        const d = new Date(r.created_at);
+        return d >= start && d <= end;
       });
     }
 
     return result;
-  }, [
-    reports,
-    statusFilter,
-    kindFilter,
-    regionFilter,
-    filters.searchQuery,
-    filters.periodStart,
-    filters.periodEnd,
-  ]);
+  }, [reports, kindFilter, regionFilter, searchQuery, periodFilter, customStart, customEnd]);
 
+  // ⭐ 2. النتيجة النهائية للعرض (مع فلتر الحالة للدعم الفني فقط)
+  const filteredReports = useMemo(() => {
+    if (isTechSupport && statusFilter !== 'all') {
+      return reportsBeforeStatusFilter.filter((r) => r.status === statusFilter);
+    }
+    return reportsBeforeStatusFilter;
+  }, [reportsBeforeStatusFilter, statusFilter, isTechSupport]);
+
+  // ⭐ 3. العدادات (للدعم الفني فقط)
   const statusCounts = useMemo(
     () => ({
-      all: reports.length,
-      active: reports.filter((r) => r.status === 'active').length,
-      updated: reports.filter((r) => r.status === 'updated').length,
-      aggregated: reports.filter((r) => r.status === 'aggregated').length,
-      archived: reports.filter((r) => r.status === 'archived').length,
+      all: reportsBeforeStatusFilter.length,
+      active: reportsBeforeStatusFilter.filter((r) => r.status === 'active').length,
+      updated: reportsBeforeStatusFilter.filter((r) => r.status === 'updated').length,
+      aggregated: reportsBeforeStatusFilter.filter((r) => r.status === 'aggregated').length,
+      archived: reportsBeforeStatusFilter.filter((r) => r.status === 'archived').length,
     }),
-    [reports]
+    [reportsBeforeStatusFilter]
   );
+
+  // ⭐ 4. البطاقات العلوية الديناميكية بناءً على الفترة المحددة
+  const dynamicStats = useMemo(() => {
+    const total = reportsBeforeStatusFilter.length;
+    const rl = reportsBeforeStatusFilter.filter((r) => getTemplateKind(r.template?.code) === 'rl').length;
+    const tls = reportsBeforeStatusFilter.filter((r) => getTemplateKind(r.template?.code) === 'tls').length;
+    const archived = reportsBeforeStatusFilter.filter((r) => r.status === 'archived').length;
+    return { total, rl, tls, archived };
+  }, [reportsBeforeStatusFilter]);
 
   const pageTitle = useMemo(() => {
     const role = activeEntity?.roleCode;
-    if (role === 'tech_support' || role === 'edc_viewer')
-      return `📝 ${t('reports_page.all_reports')}`;
+    if (role === 'tech_support' || role === 'edc_viewer') return `📝 ${t('reports_page.all_reports')}`;
     if (role === 'qa_chief') return `📝 ${t('reports_page.team_reports')}`;
-    if (role === 'region_manager' || role === 'region_assistant')
-      return `📝 ${t('reports_page.region_reports')}`;
-    if (role === 'qa_coordinator' || role === 'edu_specialist')
-      return `📝 ${t('reports_page.my_reports')}`;
-    if (role === 'school_manager')
-      return `📝 ${t('reports_page.school_reports')}`;
-    if (role === 'tls_manager')
-      return `📝 ${t('reports_page.center_reports')}`;
+    if (role === 'region_manager' || role === 'region_assistant') return `📝 ${t('reports_page.region_reports')}`;
+    if (role === 'qa_coordinator' || role === 'edu_specialist') return `📝 ${t('reports_page.my_reports')}`;
+    if (role === 'school_manager') return `📝 ${t('reports_page.school_reports')}`;
+    if (role === 'tls_manager') return `📝 ${t('reports_page.center_reports')}`;
     return `📝 ${t('reports_page.reports')}`;
   }, [activeEntity, t]);
 
   // ═══════════════════════════════════════════════════════════
   // Scroll handling
   // ═══════════════════════════════════════════════════════════
-
   const checkScroll = () => {
     const el = tableScrollRef.current;
     if (!el) return;
-
     const maxScroll = el.scrollWidth - el.clientWidth;
-    if (maxScroll <= 0) {
-      setCanScrollLeft(false);
-      setCanScrollRight(false);
-      return;
-    }
-
+    if (maxScroll <= 0) { setCanScrollLeft(false); setCanScrollRight(false); return; }
     const currentScroll = Math.abs(el.scrollLeft);
-    const scrolledFromStart = currentScroll > 2;
-    const scrolledFromEnd = currentScroll < maxScroll - 2;
-
-    setCanScrollLeft(scrolledFromEnd);
-    setCanScrollRight(scrolledFromStart);
+    setCanScrollLeft(currentScroll < maxScroll - 2);
+    setCanScrollRight(currentScroll > 2);
   };
 
   useEffect(() => {
     checkScroll();
     const timer = setTimeout(checkScroll, 100);
-
     const el = tableScrollRef.current;
     if (el) {
       el.addEventListener('scroll', checkScroll);
@@ -424,32 +362,34 @@ export function ReportsListPage() {
   const scrollTableLeft = () => {
     const el = tableScrollRef.current;
     if (!el) return;
-    const newPos = Math.abs(el.scrollLeft) + 300;
-    el.scrollTo({ left: -newPos, behavior: 'smooth' });
+    el.scrollTo({ left: -(Math.abs(el.scrollLeft) + 300), behavior: 'smooth' });
   };
 
   const scrollTableRight = () => {
     const el = tableScrollRef.current;
     if (!el) return;
-    const newPos = Math.max(0, Math.abs(el.scrollLeft) - 300);
-    el.scrollTo({ left: -newPos, behavior: 'smooth' });
+    el.scrollTo({ left: -Math.max(0, Math.abs(el.scrollLeft) - 300), behavior: 'smooth' });
   };
-
-  // ═══════════════════════════════════════════════════════════
-  // Render
-  // ═══════════════════════════════════════════════════════════
 
   if (loading && reports.length === 0) {
     return <Loading message={t('reports_page.loading_reports')} />;
   }
 
   const hasAnyFilter =
-    filters.searchQuery ||
-    filters.periodStart ||
-    filters.periodEnd ||
+    searchQuery ||
+    periodFilter !== 'this_week' ||
     kindFilter !== 'all' ||
     statusFilter !== 'all' ||
-    regionFilter !== 'all';
+    regionFilter !== 'all' ||
+    (periodFilter === 'custom' && (customStart || customEnd));
+
+  const periodOptions: { key: PeriodKey; labelAr: string; labelEn: string }[] = [
+    { key: 'this_week', labelAr: 'هذا الأسبوع', labelEn: 'This Week' },
+    { key: 'last_week', labelAr: 'الأسبوع الماضي', labelEn: 'Last Week' },
+    { key: 'two_weeks_ago', labelAr: 'قبل أسبوعين', labelEn: '2 Weeks Ago' },
+    { key: 'custom', labelAr: 'مخصص', labelEn: 'Custom' },
+    { key: 'all', labelAr: 'كافة التقارير', labelEn: 'All Reports' },
+  ];
 
   return (
     <div className="space-y-6">
@@ -459,23 +399,50 @@ export function ReportsListPage() {
           <h1 className="text-2xl font-bold text-text">{pageTitle}</h1>
           <p className="text-text-secondary mt-1">
             {canViewAll
-              ? t('reports_page.view_all_desc', {
-                  entity: activeEntity?.entityName || '',
-                })
-              : t('reports_page.view_my_desc', {
-                  entity: activeEntity?.entityName || '',
-                })}
+              ? t('reports_page.view_all_desc', { entity: activeEntity?.entityName || '' })
+              : t('reports_page.view_my_desc', { entity: activeEntity?.entityName || '' })}
           </p>
         </div>
 
         {!checkingPermissions && hasCreatePermission && (
-          <Button
-            variant="primary"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => navigate('/reports/new')}
-          >
+          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => navigate('/reports/new')}>
             {t('reports_page.create_report')}
           </Button>
+        )}
+      </div>
+
+      {/* ⭐ فلتر الفترة الزمنية (ظاهر للجميع مع حقول مخصص) */}
+      <div className="flex flex-col gap-3 bg-surface p-4 rounded-xl border border-border shadow-sm">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+            <Calendar className="w-3.5 h-3.5" />{i18n.language === 'ar' ? 'الفترة:' : 'Period:'}
+          </span>
+          <div className="flex gap-1.5 flex-wrap">
+            {periodOptions.map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setPeriodFilter(opt.key)}
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold transition-all border"
+                style={{
+                  backgroundColor: periodFilter === opt.key ? 'var(--color-primary)' : 'var(--color-surface)',
+                  color: periodFilter === opt.key ? '#fff' : 'var(--color-text-secondary)',
+                  borderColor: periodFilter === opt.key ? 'var(--color-primary)' : 'var(--color-border)',
+                }}
+              >
+                {i18n.language === 'ar' ? opt.labelAr : opt.labelEn}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* حقول "من وإلى" تظهر مباشرة عند اختيار مخصص */}
+        {periodFilter === 'custom' && (
+          <div className="flex items-center gap-3 flex-wrap mt-2 p-3 rounded-lg border border-dashed" style={{ backgroundColor: 'var(--color-bg-secondary)', borderColor: 'var(--color-primary)' }}>
+            <label className="text-xs font-bold text-[var(--color-text-secondary)]">{i18n.language === 'ar' ? 'من:' : 'From:'}</label>
+            <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="input" style={{ maxWidth: '160px' }} />
+            <label className="text-xs font-bold text-[var(--color-text-secondary)]">{i18n.language === 'ar' ? 'إلى:' : 'To:'}</label>
+            <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="input" style={{ maxWidth: '160px' }} />
+          </div>
         )}
       </div>
 
@@ -486,93 +453,48 @@ export function ReportsListPage() {
             <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
             <div className="text-sm">
               <p className="font-semibold text-warning mb-1">
-                {t('reports_page.no_templates_warning', {
-                  entity: activeEntity?.entityName || '',
-                })}
+                {t('reports_page.no_templates_warning', { entity: activeEntity?.entityName || '' })}
               </p>
-              <p className="text-warning/90">
-                {t('reports_page.no_templates_desc')}
-              </p>
+              <p className="text-warning/90">{t('reports_page.no_templates_desc')}</p>
             </div>
           </div>
         </Card>
       )}
 
-      {/* Stats */}
+      {/* ⭐ Stats (البطاقات الديناميكية بناءً على الفترة) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          icon={<FileText className="w-5 h-5" />}
-          label={t('reports_page.total_reports')}
-          value={stats.total}
-          color="primary"
-        />
-        <StatCard
-          icon={<Calendar className="w-5 h-5" />}
-          label={t('reports_page.this_month')}
-          value={stats.thisMonth}
-          color="info"
-        />
-        <StatCard
-          icon={<Clock className="w-5 h-5" />}
-          label={t('reports_page.active')}
-          value={stats.active}
-          color="success"
-        />
-        <StatCard
-          icon={<Archive className="w-5 h-5" />}
-          label={t('reports_page.archived')}
-          value={stats.archived}
-          color="warning"
-        />
+        <StatCard icon={<FileText className="w-5 h-5" />} label={i18n.language === 'ar' ? 'إجمالي التقارير' : 'Total Reports'} value={dynamicStats.total} color="primary" />
+        <StatCard icon={<School className="w-5 h-5" />} label={i18n.language === 'ar' ? 'تقارير R.L' : 'R.L Reports'} value={dynamicStats.rl} color="info" />
+        <StatCard icon={<GraduationCap className="w-5 h-5" />} label={i18n.language === 'ar' ? 'تقارير TLS' : 'TLS Reports'} value={dynamicStats.tls} color="success" />
+        <StatCard icon={<Archive className="w-5 h-5" />} label={i18n.language === 'ar' ? 'مؤرشفة' : 'Archived'} value={dynamicStats.archived} color="warning" />
       </div>
 
       {/* Filter Card */}
       <Card padding="none">
-        <div className="border-b border-border overflow-x-auto">
-          <div className="flex items-center gap-1 px-2 min-w-max">
-            <TabButton
-              active={statusFilter === 'all'}
-              onClick={() => setStatusFilter('all')}
-              label={t('reports_page.all')}
-              count={statusCounts.all}
-            />
-            <TabButton
-              active={statusFilter === 'active'}
-              onClick={() => setStatusFilter('active')}
-              label={t('reports_page.status_active')}
-              count={statusCounts.active}
-            />
-            <TabButton
-              active={statusFilter === 'updated'}
-              onClick={() => setStatusFilter('updated')}
-              label={t('reports_page.status_updated')}
-              count={statusCounts.updated}
-            />
-            <TabButton
-              active={statusFilter === 'aggregated'}
-              onClick={() => setStatusFilter('aggregated')}
-              label={t('reports_page.status_aggregated')}
-              count={statusCounts.aggregated}
-            />
-            <TabButton
-              active={statusFilter === 'archived'}
-              onClick={() => setStatusFilter('archived')}
-              label={t('reports_page.status_archived')}
-              count={statusCounts.archived}
-            />
+        {/* ⭐ شريط الحالة (الكل، نشط...) يظهر فقط للدعم الفني */}
+        {isTechSupport && (
+          <div className="border-b border-border overflow-x-auto">
+            <div className="flex items-center gap-1 px-2 min-w-max">
+              <TabButton active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} label={t('reports_page.all')} count={statusCounts.all} />
+              <TabButton active={statusFilter === 'active'} onClick={() => setStatusFilter('active')} label={t('reports_page.status_active')} count={statusCounts.active} />
+              <TabButton active={statusFilter === 'updated'} onClick={() => setStatusFilter('updated')} label={t('reports_page.status_updated')} count={statusCounts.updated} />
+              <TabButton active={statusFilter === 'aggregated'} onClick={() => setStatusFilter('aggregated')} label={t('reports_page.status_aggregated')} count={statusCounts.aggregated} />
+              <TabButton active={statusFilter === 'archived'} onClick={() => setStatusFilter('archived')} label={t('reports_page.status_archived')} count={statusCounts.archived} />
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="p-4 flex items-center gap-3 flex-wrap">
           <div className="flex-1 min-w-[240px]">
             <Input
               placeholder={t('reports_page.search_placeholder')}
               icon={<Search className="w-4 h-4" />}
-              value={filters.searchQuery || ''}
-              onChange={(e) => setFilters({ searchQuery: e.target.value })}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
 
+          {/* زر الخيارات المتقدمة (ظاهر للجميع) */}
           <Button
             variant={showAdvanced ? 'primary' : 'secondary'}
             icon={<Filter className="w-4 h-4" />}
@@ -589,16 +511,10 @@ export function ReportsListPage() {
                 setStatusFilter('all');
                 setKindFilter('all');
                 setRegionFilter('all');
-                setFilters({
-                  searchQuery: '',
-                  status: '',
-                  categoryCode: '',
-                  templateId: '',
-                  creatorId: '',
-                  entityIdFilter: '',
-                  periodStart: '',
-                  periodEnd: '',
-                });
+                setPeriodFilter('this_week'); // العودة للافتراضي
+                setSearchQuery('');
+                setCustomStart('');
+                setCustomEnd('');
               }}
             >
               {t('reports_page.clear')}
@@ -606,27 +522,22 @@ export function ReportsListPage() {
           )}
         </div>
 
+        {/* الخيارات المتقدمة (بدون حقول التاريخ لأنها انتقلت للأعلى) */}
         {showAdvanced && (
           <div className="px-4 pb-4 border-t border-border pt-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-text-muted mb-1">
                   {t('reports_page.report_type')}
                 </label>
                 <select
                   value={kindFilter}
-                  onChange={(e) =>
-                    setKindFilter(e.target.value as KindFilter)
-                  }
+                  onChange={(e) => setKindFilter(e.target.value as KindFilter)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm"
                 >
                   <option value="all">{t('reports_page.all')}</option>
-                  <option value="rl">
-                    {t('aggregates_page.report_type_rl')}
-                  </option>
-                  <option value="tls">
-                    {t('aggregates_page.report_type_tls')}
-                  </option>
+                  <option value="rl">{t('aggregates_page.report_type_rl')}</option>
+                  <option value="tls">{t('aggregates_page.report_type_tls')}</option>
                 </select>
               </div>
 
@@ -640,60 +551,24 @@ export function ReportsListPage() {
                   onChange={(e) => setRegionFilter(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm"
                 >
-                  <option value="all">
-                    {i18n.language === 'ar' ? 'كل المناطق' : 'All Regions'}
-                  </option>
+                  <option value="all">{i18n.language === 'ar' ? 'كل المناطق' : 'All Regions'}</option>
                   {uniqueRegions.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name_ar}
-                    </option>
+                    <option key={r.id} value={r.id}>{r.name_ar}</option>
                   ))}
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  {t('reports_page.period_from')}
-                </label>
-                <input
-                  type="date"
-                  value={filters.periodStart || ''}
-                  onChange={(e) =>
-                    setFilters({ periodStart: e.target.value })
-                  }
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-text-muted mb-1">
-                  {t('reports_page.period_to')}
-                </label>
-                <input
-                  type="date"
-                  value={filters.periodEnd || ''}
-                  onChange={(e) => setFilters({ periodEnd: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm"
-                />
               </div>
             </div>
           </div>
         )}
       </Card>
 
-      {/* ⭐ عدّاد التقارير المفلترة */}
+      {/* عدّاد التقارير المفلترة */}
       <div className="flex items-center justify-between text-sm px-1">
         <span className="text-text-muted">
           {i18n.language === 'ar' ? (
-            <>
-              عرض <strong className="text-text">{filteredReports.length}</strong>{' '}
-              من <strong className="text-text">{reports.length}</strong> تقرير
-            </>
+            <>عرض <strong className="text-text">{filteredReports.length}</strong> من <strong className="text-text">{reports.length}</strong> تقرير</>
           ) : (
-            <>
-              Showing <strong className="text-text">{filteredReports.length}</strong>{' '}
-              of <strong className="text-text">{reports.length}</strong> reports
-            </>
+            <>Showing <strong className="text-text">{filteredReports.length}</strong> of <strong className="text-text">{reports.length}</strong> reports</>
           )}
           {hasAnyFilter && filteredReports.length !== reports.length && (
             <span className="ml-2 px-2 py-0.5 rounded-full bg-warning/10 text-warning text-xs">
@@ -723,27 +598,19 @@ export function ReportsListPage() {
               <FileText className="w-10 h-10 text-primary" />
             </div>
             <h2 className="text-xl font-semibold text-text mb-2">
-              {reports.length === 0
-                ? t('reports_page.no_reports_title')
-                : t('reports_page.no_results_title')}
+              {reports.length === 0 ? t('reports_page.no_reports_title') : t('reports_page.no_results_title')}
             </h2>
             <p className="text-text-secondary mb-6 max-w-md mx-auto">
               {reports.length === 0
                 ? hasCreatePermission
                   ? noTemplates
-                    ? t('reports_page.no_templates_in_region', {
-                        entity: activeEntity?.entityName || '',
-                      })
+                    ? t('reports_page.no_templates_in_region', { entity: activeEntity?.entityName || '' })
                     : t('reports_page.no_reports_desc')
                   : t('reports_page.no_permission')
                 : t('reports_page.try_change_filters')}
             </p>
             {reports.length === 0 && hasCreatePermission && !noTemplates && (
-              <Button
-                variant="primary"
-                icon={<Plus className="w-4 h-4" />}
-                onClick={() => navigate('/reports/new')}
-              >
+              <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => navigate('/reports/new')}>
                 {t('reports_page.create_report')}
               </Button>
             )}
@@ -755,53 +622,27 @@ export function ReportsListPage() {
       {filteredReports.length > 0 && (
         <Card padding="none" className="relative">
           {canScrollRight && (
-            <button
-              onClick={scrollTableRight}
-              className="absolute right-0 top-12 bottom-0 z-20 w-10 bg-gradient-to-l from-surface via-surface/90 to-transparent flex items-center justify-center hover:from-primary/10 transition-colors"
-              aria-label="تمرير لليمين"
-            >
+            <button onClick={scrollTableRight} className="absolute right-0 top-12 bottom-0 z-20 w-10 bg-gradient-to-l from-surface via-surface/90 to-transparent flex items-center justify-center hover:from-primary/10 transition-colors" aria-label="تمرير لليمين">
               <ChevronRight className="w-6 h-6 text-primary drop-shadow-sm" />
             </button>
           )}
           {canScrollLeft && (
-            <button
-              onClick={scrollTableLeft}
-              className="absolute left-0 top-12 bottom-0 z-20 w-10 bg-gradient-to-r from-surface via-surface/90 to-transparent flex items-center justify-center hover:from-primary/10 transition-colors"
-              aria-label="تمرير لليسار"
-            >
+            <button onClick={scrollTableLeft} className="absolute left-0 top-12 bottom-0 z-20 w-10 bg-gradient-to-r from-surface via-surface/90 to-transparent flex items-center justify-center hover:from-primary/10 transition-colors" aria-label="تمرير لليسار">
               <ChevronLeft className="w-6 h-6 text-primary drop-shadow-sm" />
             </button>
           )}
 
-          <div
-            ref={tableScrollRef}
-            className="overflow-auto max-h-[calc(100vh-280px)]"
-            style={{ WebkitOverflowScrolling: 'touch' }}
-          >
+          <div ref={tableScrollRef} className="overflow-auto max-h-[calc(100vh-280px)]" style={{ WebkitOverflowScrolling: 'touch' }}>
             <table className="w-full relative">
               <thead className="bg-bg-secondary border-b border-border sticky top-0 z-10 shadow-sm">
                 <tr>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">
-                    {t('reports_page.table_report')}
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden md:table-cell">
-                    {entityColumnLabel}
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden lg:table-cell">
-                    {i18n.language === 'ar' ? 'المنطقة' : 'Region'}
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden md:table-cell">
-                    {i18n.language === 'ar' ? 'المعلم' : 'Teacher'}
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden lg:table-cell">
-                    {t('reports_page.table_creator')}
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">
-                    {t('reports_page.table_status')}
-                  </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">
-                    {t('reports_page.table_date')}
-                  </th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">{t('reports_page.table_report')}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden md:table-cell">{entityColumnLabel}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden lg:table-cell">{i18n.language === 'ar' ? 'المنطقة' : 'Region'}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden md:table-cell">{i18n.language === 'ar' ? 'المعلم' : 'Teacher'}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase hidden lg:table-cell">{t('reports_page.table_creator')}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">{t('reports_page.table_status')}</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-text-secondary uppercase">{t('reports_page.table_date')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -823,16 +664,11 @@ export function ReportsListPage() {
                           </div>
                           <div className="min-w-0">
                             <div className="font-medium text-text truncate">
-                              {report.template?.name_ar ||
-                                t('reports_page.table_report')}
+                              {report.template?.name_ar || t('reports_page.table_report')}
                             </div>
                             <div className="text-xs text-text-muted truncate">
                               {getPeriodLabel(report.period_type, t)}
-                              {report.period_start &&
-                                ` — ${formatDate(
-                                  report.period_start,
-                                  i18n.language
-                                )}`}
+                              {report.period_start && ` — ${formatDate(report.period_start, i18n.language)}`}
                             </div>
                           </div>
                         </div>
@@ -841,10 +677,7 @@ export function ReportsListPage() {
                       <td className="px-4 py-4 hidden md:table-cell">
                         <div className="flex items-center gap-2 text-sm text-text">
                           <Building2 className="w-4 h-4 text-text-muted flex-shrink-0" />
-                          <span
-                            className="truncate max-w-[200px]"
-                            title={report.entity?.name_ar}
-                          >
+                          <span className="truncate max-w-[200px]" title={report.entity?.name_ar}>
                             {report.entity?.name_ar || '—'}
                           </span>
                         </div>
@@ -853,19 +686,14 @@ export function ReportsListPage() {
                       <td className="px-4 py-4 hidden lg:table-cell">
                         <div className="flex items-center gap-2 text-sm text-text">
                           <MapPin className="w-4 h-4 text-info flex-shrink-0" />
-                          <span className="truncate max-w-[150px]">
-                            {regionName || '—'}
-                          </span>
+                          <span className="truncate max-w-[150px]">{regionName || '—'}</span>
                         </div>
                       </td>
 
                       <td className="px-4 py-4 hidden md:table-cell">
                         <div className="flex items-center gap-2 text-sm text-text">
                           <GraduationCap className="w-4 h-4 text-text-muted flex-shrink-0" />
-                          <span
-                            className="truncate max-w-[150px]"
-                            title={teacherName}
-                          >
+                          <span className="truncate max-w-[150px]" title={teacherName}>
                             {teacherName}
                           </span>
                         </div>
@@ -874,16 +702,12 @@ export function ReportsListPage() {
                       <td className="px-4 py-4 hidden lg:table-cell">
                         <div className="flex items-center gap-2 text-sm text-text">
                           <UserIcon className="w-4 h-4 text-text-muted" />
-                          <span className="truncate">
-                            {report.creator?.full_name || '—'}
-                          </span>
+                          <span className="truncate">{report.creator?.full_name || '—'}</span>
                         </div>
                       </td>
 
                       <td className="px-4 py-4">
-                        <span
-                          className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${badge.className}`}
-                        >
+                        <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${badge.className}`}>
                           {badge.label}
                         </span>
                       </td>
@@ -928,9 +752,7 @@ function StatCard({ icon, label, value, color }: StatCardProps) {
   return (
     <Card padding="md">
       <div className="flex items-center gap-4">
-        <div
-          className={`w-12 h-12 rounded-xl flex items-center justify-center ${colorClasses[color]}`}
-        >
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${colorClasses[color]}`}>
           {icon}
         </div>
         <div>
@@ -956,24 +778,11 @@ function TabButton({ active, onClick, label, count }: TabButtonProps) {
       className={`
         flex items-center gap-2 px-4 py-3 text-sm font-medium
         border-b-2 transition-colors whitespace-nowrap
-        ${
-          active
-            ? 'border-primary text-primary'
-            : 'border-transparent text-text-secondary hover:text-text hover:border-border'
-        }
+        ${active ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text hover:border-border'}
       `}
     >
       <span>{label}</span>
-      <span
-        className={`
-          inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold
-          ${
-            active
-              ? 'bg-primary text-white'
-              : 'bg-bg-secondary text-text-secondary'
-          }
-        `}
-      >
+      <span className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold ${active ? 'bg-primary text-white' : 'bg-bg-secondary text-text-secondary'}`}>
         {count}
       </span>
     </button>
